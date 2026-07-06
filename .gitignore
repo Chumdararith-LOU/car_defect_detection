@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# -----------------------------------------------------------------
+# MLOps Data & Artifact Storage (Content-level ignore only)
+# -----------------------------------------------------------------
+data/raw/*
+data/processed/*
+data/calibration/*
+data/external/*
+artifacts/*
+
+# EXCLUSIONS: Force Git to always step inside and see DVC configuration files
+!**/*.dvc
+!**/dvc.yaml
+!**/dvc.lock
+!**/.gitignore
+!**/.gitkeep
+
+# MLflow
+mlruns/
+
+# Notebooks output
+notebooks/*.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
