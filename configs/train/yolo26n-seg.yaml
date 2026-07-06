@@ -1,0 +1,30 @@
+# Task Meta
+task: segment
+model_preset: yolo26n-seg.pt
+project_name: car_defect_detection
+run_name: yolo26n_car_defect_detection
+
+# Dataset Paths 
+dataset_config: "/home/rith/car_defect_detection/data/processed/yolo_seg/data.yaml"
+
+# Hardware / Performance Parameters
+epochs: 150
+imgsz: 640
+batch_size: 32
+device: 0
+workers: 8
+amp: false
+
+# Environmental Defense Augmentations
+augmentations:
+  hsv_h: 0.03       # LED vs natural lot daylight shift
+  hsv_s: 0.7        # Clear-coat specular reflection defense
+  hsv_v: 0.5        # Low-light wheel-wells vs sun glare variance
+  degrees: 10.0     # Smartphone hand tilt variance
+  scale: 0.5        # Close-ups vs wide panel distances
+  perspective: 0.0005
+  fliplr: 0.5
+  mosaic: 0.3       # Kept low to protect fine scratch details
+  mixup: 0.1
+  erasing: 0.4      # Simulates mud patches/surface dirt film
+  close_mosaic: 10  # Drops mosaic late to sharpen polygon boundaries
