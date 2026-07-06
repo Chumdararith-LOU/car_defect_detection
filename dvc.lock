@@ -1,0 +1,20 @@
+schema: '2.0'
+stages:
+  consolidate_data:
+    cmd: python src/data/consolidate.py
+    deps:
+    - path: data/raw/
+      hash: md5
+      md5: b1d30f1bc65e7693b35ef4292df06b5b.dir
+      size: 6403552218
+      nfiles: 49847
+    - path: src/data/consolidate.py
+      hash: md5
+      md5: 299d76cf1b447242097ea3edaa9896f5
+      size: 9327
+    outs:
+    - path: data/processed/yolo_seg/
+      hash: md5
+      md5: 919def27ef50061ac98e13f78b024244.dir
+      size: 890441403
+      nfiles: 34279
