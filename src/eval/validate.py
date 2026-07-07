@@ -35,8 +35,8 @@ def fetch_mlflow_data(project_name, run_name):
             f"Run '{run_name}' not found in MLflow project '{project_name}'."
         )
 
-    run = runs[0]  # Get the most recent run with this name
-    return run.data.params, run.data.metrics
+    run = runs[0]
+    return run.data.params, run.data.metrics, run.data.tags
 
 
 def gather_artifacts(source_dir, dest_fig_dir):
@@ -93,12 +93,16 @@ def main():
     output_md_path = os.path.join(docs_dir, f"{args.run_name}_report.md")
 
     print(f" Fetching telemetry for {args.project} -> {args.run_name}...")
-    params, metrics = fetch_mlflow_data(args.project, args.run_name)
+    params, metrics, tags = fetch_mlflow_data(args.project, args.run_name)
+
+    target_dir = (
+        args.yolo_dir if args.yolo_dir else os.path.join(args.project, args.run_name)
+    )
 
     figures = []
-    if args.yolo_dir:
-        print(f" Harvesting visual artifacts from {args.yolo_dir}...")
-        figures = gather_artifacts(args.yolo_dir, fig_dir)
+    if target_dir and os.path.exists(target_dir):
+        print(f" Harvesting visual artifacts from {target_dir}...")
+        figures = gather_artifacts(target_dir, fig_dir)
 
     payload = {
         "project_name": args.project,
@@ -106,6 +110,7 @@ def main():
         "date_generated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "params": params,
         "metrics": metrics,
+        "tags": tags,  # Feeds the template variables like {{ tags.git_commit }}
         "figures": figures,
     }
 

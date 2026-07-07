@@ -4,6 +4,7 @@ import os
 import argparse
 import yaml
 import mlflow
+import subprocess
 from ultralytics import YOLO
 from ultralytics import settings
 
@@ -14,6 +15,18 @@ def load_config(config_path):
         raise FileNotFoundError(f"Configuration file not found at: {config_path}")
     with open(config_path, "r") as f:
         return yaml.safe_load(f)
+
+
+def get_git_commit():
+    """Extracts the active short Git commit hash for metadata lineage."""
+    try:
+        return (
+            subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
+            .decode("utf-8")
+            .strip()
+        )
+    except Exception:
+        return "unknown"
 
 
 def main():
@@ -34,6 +47,7 @@ def main():
     mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
     mlflow.set_tracking_uri(mlflow_uri)
 
+    # Passive background logging initialization
     settings.update({"mlflow": True, "tensorboard": True})
 
     project_name = cfg.get("project", cfg.get("project_name", "car_defect_detection"))
@@ -47,32 +61,44 @@ def main():
     model = YOLO(cfg["model_preset"])
 
     print(f"Launching experiment: project={project_name}, run={run_name}")
-    model.train(
-        # Task & Paths
-        data=dataset_path,
-        epochs=cfg["epochs"],
-        imgsz=cfg["imgsz"],
-        batch=batch_size,
-        device=cfg["device"],
-        workers=cfg.get("workers", 8),
-        amp=cfg.get("amp", True),
-        # Environmental Defense Augmentations
-        hsv_h=aug.get("hsv_h", 0.015),
-        hsv_s=aug.get("hsv_s", 0.7),
-        hsv_v=aug.get("hsv_v", 0.4),
-        degrees=aug.get("degrees", 0.0),
-        scale=aug.get("scale", 0.5),
-        perspective=aug.get("perspective", 0.0),
-        fliplr=aug.get("fliplr", 0.5),
-        mosaic=aug.get("mosaic", 1.0),
-        mixup=aug.get("mixup", 0.0),
-        erasing=aug.get("erasing", 0.4),
-        close_mosaic=aug.get("close_mosaic", 0),
-        val=True,
-        save=True,
-        project=project_name,
-        name=run_name,
-    )
+
+    # Explicit MLflow block managing complete code/data lineage
+    with mlflow.start_run(run_name=run_name):
+        # Enforce data lineage tags
+        git_hash = get_git_commit()
+        mlflow.set_tag("git_commit", git_hash)
+        mlflow.log_artifact(args.config, artifact_path="configs")
+
+        # Track the configuration blueprint path
+        mlflow.log_param("config_blueprint", args.config)
+
+        model.train(
+            # Task & Paths
+            data=dataset_path,
+            epochs=cfg["epochs"],
+            imgsz=cfg["imgsz"],
+            batch=batch_size,
+            device=cfg["device"],
+            workers=cfg.get("workers", 8),
+            amp=cfg.get("amp", True),
+            seed=42,  # Lock shuffle distributions to guarantee fair comparisons (PTQ vs QAT)
+            # Environmental Defense Augmentations
+            hsv_h=aug.get("hsv_h", 0.015),
+            hsv_s=aug.get("hsv_s", 0.7),
+            hsv_v=aug.get("hsv_v", 0.4),
+            degrees=aug.get("degrees", 0.0),
+            scale=aug.get("scale", 0.5),
+            perspective=aug.get("perspective", 0.0),
+            fliplr=aug.get("fliplr", 0.5),
+            mosaic=aug.get("mosaic", 1.0),
+            mixup=aug.get("mixup", 0.0),
+            erasing=aug.get("erasing", 0.4),
+            close_mosaic=aug.get("close_mosaic", 0),
+            val=True,
+            save=True,
+            project=project_name,
+            name=run_name,
+        )
 
     print(
         f"Model training run complete. Weights archived under {project_name}/{run_name}/"
