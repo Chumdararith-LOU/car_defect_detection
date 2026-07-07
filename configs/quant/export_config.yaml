@@ -1,13 +1,32 @@
-# configs/quant/export_config.yaml
-pt_model_path: "artifacts/models/yolo26s-seg/best.pt"
-calibration_data: "data/processed/yolo_seg/data.yaml"
-output_dir: "artifacts"
+# 1. Source Model & Input Parameters
+weights: "artifacts/models/yolo26s_1280_v2/weights/best.pt"
+imgsz: 1280
+batch_size: 1             # Edge deployments process camera streams 1 frame at a time
+device: "cpu"             # Default export device (TensorRT will automatically request CUDA)
 
-export_settings:
-  format: "onnx" # Base format
-  int8: true     # Enable PTQ
-  simplify: true # Clean up ONNX graph
+# 2. PTQ Calibration
+int8: true
+data: "data/processed/yolo_seg/data.yaml"  # Preserves class mappings
+calibration_dir: "data/calibration"        # Points to your highly diverse 150-image subset
 
-deployment_targets:
-  - "ncnn"
-  - "engine"
+# 3. Export Targets & Toolchains
+export:
+  # Universal Intermediate Graph
+  onnx:
+    enable: true
+    simplify: true        # Strips unnecessary operations for cleaner edge ingestion
+    opset: 12             # Opset 12 is highly stable for mobile cross-compilation
+
+  # Target 1: Android Smartphone (ARM CPU / Vulkan)
+  ncnn:
+    enable: true
+    precision: "int8"
+    # Generates: model.param, model.bin, and model.table (quantization scales)
+
+  # Target 2: NVIDIA Jetson Orin Nano (CUDA / Tensor Cores)
+  tensorrt:
+    enable: true
+    precision: "int8"
+    workspace: 4          # Allocates 4GB of VRAM to calculate optimal GPU kernels during export
+    # NOTE: .engine files are hardware-specific. This specific export flag should only
+    # be triggered when running the script natively on the Jetson board.
