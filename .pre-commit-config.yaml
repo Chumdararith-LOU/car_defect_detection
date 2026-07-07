@@ -1,0 +1,44 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-yaml
+        name: 🔍 Validate YAML Configurations
+        description: Ensures all training and balancing configs are syntactically valid.
+        entry: check-yaml
+        types: [yaml]
+
+      - id: end-of-file-fixer
+        name: 📄 Fix End of Files
+        description: Ensures that a file is either empty or ends with one newline.
+
+      - id: trailing-whitespace
+        name: 🧹 Strip Trailing Whitespace
+        description: Trims unnecessary whitespace from lines of code.
+
+  - repo: https://github.com/psf/black
+    rev: 24.4.2
+    hooks:
+      - id: black
+        name: 🎨 Enforce Black Python Code Formatting
+        entry: black
+        language_version: python3
+        types: [python]
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+        name: 🛡️ Lint Python Code (Flake8)
+        entry: flake8
+        args: ["--max-line-length=120", "--ignore=E203,W503"]
+        types: [python]
+
+  - repo: local
+    hooks:
+      - id: dvc-status-check
+        name: 📦 Verify DVC Cache Synchronization
+        entry: dvc status
+        language: system
+        stages: [commit]
+        pass_filenames: false

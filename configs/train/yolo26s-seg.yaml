@@ -1,0 +1,28 @@
+task: segment
+model_preset: yolo26s-seg.pt
+data: data/processed/yolo_seg/data.yaml
+
+# Logging & MLOps Routing (TensorBoard & MLflow hooks)
+project: car_defect_detection
+name: yolo26s_1280_v2
+
+# Training Hyperparameters
+epochs: 150
+imgsz: 1280
+batch: 16
+device: 0
+workers: 8
+amp: true
+
+# Edge-Defense Augmentation Matrix (Refurbished Lot Profile)
+hsv_h: 0.03                         # Defends against artificial LED color temperature shifts
+hsv_s: 0.7                          # Insulates against clear-coat gloss specular reflections
+hsv_v: 0.5                          # Compensates for heavy shadow-to-bright sunlight variations
+degrees: 10.0                       # Mitigates inspector handheld camera rotations
+scale: 0.5                          # Normalizes variable panel scanning distances (0.5x to 1.5x)
+perspective: 0.0005                 # Maintains polygon masks regardless of viewing tilt
+fliplr: 0.5                         # Standard mirror augmentation
+mosaic: 0.3                         # Limited to preserve micro-scratches from downscaling
+mixup: 0.1                          # Subtle blending for context resilience
+erasing: 0.4                        # Simulates local dirt patches, water spots, and grease films
+close_mosaic: 10                    # Disables mosaic for the last 10 epochs to let final boundaries sharpen

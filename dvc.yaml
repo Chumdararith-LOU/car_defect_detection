@@ -9,7 +9,7 @@ stages:
 
   train_model:
     cmd: python src/train/train.py --config configs/train/yolo26n-seg.yaml
-    deps: 
+    deps:
       - src/train/train.py
       - configs/train/yolo26n-seg.yaml
       - data/processed/yolo_seg/

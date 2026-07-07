@@ -1,0 +1,41 @@
+# 📊 Experiment Report: {{ run_name }}
+
+**Project:** {{ project_name }}
+**Date Generated:** {{ date_generated }}
+
+---
+
+## ⚙️ Model & Hyperparameters
+*This section dynamically lists the parameters used for this specific run.*
+
+| Parameter | Value |
+| :--- | :--- |
+{% for key, value in params.items() %}
+| `{{ key }}` | {{ value }} |
+{% endfor %}
+
+---
+
+## 📈 Final Evaluation Metrics
+*These metrics were automatically pulled from the MLflow tracking server.*
+
+| Metric | Score |
+| :--- | :--- |
+{% for key, value in metrics.items() %}
+| **{{ key }}** | `{{ value | round(4) }}` |
+{% endfor %}
+
+---
+
+## 🖼️ Visualizations & Artifacts
+*Below are the evaluation curves and matrices generated during training.*
+
+{% if figures %}
+<div align="center">
+  {% for fig in figures %}
+  <img src="../../reports/figures/{{ run_name }}/{{ fig }}" width="45%" style="margin: 10px;">
+  {% endfor %}
+</div>
+{% else %}
+*No visual artifacts were found for this run.*
+{% endif %}

@@ -1,0 +1,13 @@
+# configs/quant/export_config.yaml
+pt_model_path: "artifacts/models/yolo26s-seg/best.pt"
+calibration_data: "data/processed/yolo_seg/data.yaml"
+output_dir: "artifacts"
+
+export_settings:
+  format: "onnx" # Base format
+  int8: true     # Enable PTQ
+  simplify: true # Clean up ONNX graph
+
+deployment_targets:
+  - "ncnn"
+  - "engine"
