@@ -9,9 +9,9 @@ name: yolo26s_1280_v2
 # Training Hyperparameters
 epochs: 150
 imgsz: 1280
-batch: 8
+batch: 4
 device: 0
-workers: 4
+workers: 2
 amp: true
 
 # Edge-Defense Augmentation Matrix (Refurbished Lot Profile)
