@@ -1,0 +1,7 @@
+[core]
+    remote = minio_remote
+['remote "minio_remote"']
+    url = s3://car-defect-dvc
+    endpointurl = http://100.97.206.126:9000
+    access_key_id = root
+    secret_access_key = secure_vault_password_2026

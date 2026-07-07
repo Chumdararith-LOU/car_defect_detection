@@ -1,0 +1,17 @@
+stages:
+  consolidate_data:
+    cmd: python src/data/consolidate.py
+    deps:
+      - src/data/consolidate.py
+      - data/raw/
+    outs:
+      - data/processed/yolo_seg/
+
+  train_model:
+    cmd: python src/train/train.py --config configs/train/yolo26n-seg.yaml
+    deps: 
+      - src/train/train.py
+      - configs/train/yolo26n-seg.yaml
+      - data/processed/yolo_seg/
+    outs:
+      - artifacts/models/yolo26n-seg/

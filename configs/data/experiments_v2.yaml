@@ -1,0 +1,57 @@
+paths:
+  raw_data_dir: "data/raw"
+  processed_dir: "data/processed/yolo_seg"
+
+limits:
+  max_images_train: 2000
+  max_images_val: 250
+  max_images_test: 250
+
+target_classes:
+  - "scratch"
+  - "dent"
+  - "stain"
+  - "rust"
+  - "broken"
+
+dataset_maps:
+  "Car defect detection.v2i.coco":
+    "Scratch": "scratch"
+    "Dent": "dent"
+    "Glass-Break": "broken"
+    "Accident": "broken"
+    "car-defect": "broken"
+  "Car defect detection.v6i.coco":
+    "Scratch": "scratch"
+    "Dent": "dent"
+    "Glass-Break": "broken"
+    "Accident": "broken"
+    "car-defect": "broken"
+  "Rust Detection.v1i.coco":
+    "Rust": "rust"
+    "rust": "rust"
+    "copper corrosion": "rust"
+    "corroded-part": "rust"
+    "corrosion": "rust"
+    "iron rust": "rust"
+    "mild-corrosion": "rust"
+    "moderate-corrosion": "rust"
+    "severe-corrosion": "rust"
+  "crackbird detection 3.v6-v1.coco":
+    "Bird Drop": "stain"
+    "Cracked": "broken"
+  "dd.v1i.coco":
+    "dent": "dent"
+  "scarcth_2.v9i.coco":
+    "scratch": "scratch"
+    "scarcth-2": "scratch"
+    "dent": "dent"
+  "socarC.v1i.coco":
+    "Scratched": "scratch"
+    "Crushed": "dent"
+    "Breakage": "broken"
+    "Separated": "broken"
+  "YoloForCarDefect.v1i.coco":
+    "-": "dent"
+    "Roboflow is an end-to-end computer vision platform that helps you": "scratch"
+    "Car defect detection - v7 2024-04-12 10-29pm": "dent"
