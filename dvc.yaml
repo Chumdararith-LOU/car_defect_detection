@@ -7,6 +7,15 @@ stages:
     outs:
       - data/processed/sod/
 
+  train_sod_model:
+    cmd: python src/train/train_sod.py --train_config configs/train/stage1-sod.yaml --data_config data/processed/sod/sod_data.yaml
+    deps:
+      - src/train/train_sod.py
+      - configs/train/stage1-sod.yaml
+      - data/processed/sod/
+    outs:
+      - artifacts/models/stage1_sod/
+
   consolidate_data:
     cmd: python src/data/consolidate.py --config configs/data/Experiment_v1.yaml
     deps:

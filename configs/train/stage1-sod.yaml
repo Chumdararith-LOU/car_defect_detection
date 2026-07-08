@@ -1,0 +1,16 @@
+dataset:
+  processed_dir: "data/processed/sod"
+  imgsz: 256                               # Downscaled resolution for sub-4ms edge execution
+
+# Neural Network Configurations
+training:
+  backbone: "yolov26n-sem.pt"              # Pure Semantic Segmentation variant (NMS-free / Instance-agnostic)
+  epochs: 100
+  batch_size: 32                           # Larger batch size supported due to downscaled imgsz
+  lr0: 0.001
+  weight_decay: 0.0005
+
+# Industrial Double-Threshold Gating Parameters
+gating_thresholds:
+  pixel_thresh: 0.70                     # Individual pixel activation binarization cut-off (tau_pixel)
+  anomaly_thresh: 0.0005

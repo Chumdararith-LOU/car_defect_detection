@@ -35,3 +35,6 @@ start-mlflow:
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
+
+train-sod:
+	python src/train/train_sod.py --train_config configs/train/stage1-sod.yaml --data_config data/processed/sod/sod_data.yaml
