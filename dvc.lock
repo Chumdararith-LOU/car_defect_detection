@@ -1,20 +1,42 @@
 schema: '2.0'
 stages:
   consolidate_data:
-    cmd: python src/data/consolidate.py
+    cmd: python src/data/consolidate.py --config configs/data/Experiment_v1.yaml
     deps:
+    - path: configs/data/Experiment_v1.yaml
+      hash: md5
+      md5: 4dcde5f565dfdd6af6968e65686e9beb
+      size: 1362
     - path: data/raw/
       hash: md5
-      md5: b1d30f1bc65e7693b35ef4292df06b5b.dir
-      size: 6403552218
-      nfiles: 49847
+      md5: a03005d1f627327a10372e2f4273a545.dir
+      size: 9445941020
+      nfiles: 23262
     - path: src/data/consolidate.py
       hash: md5
-      md5: 299d76cf1b447242097ea3edaa9896f5
-      size: 9327
+      md5: fd05c6f41fc77a2b69617db713af6949
+      size: 11040
     outs:
     - path: data/processed/yolo_seg/
       hash: md5
-      md5: 919def27ef50061ac98e13f78b024244.dir
-      size: 890441403
-      nfiles: 34279
+      md5: 835d39d93ba63d5634d1b50683ea8949.dir
+      size: 225
+      nfiles: 1
+  prep_sod_data:
+    cmd: python src/data/prep_sod.py
+    deps:
+    - path: data/raw/CarDD_release/CarDD_SOD/
+      hash: md5
+      md5: cb720f91ee5265a2c36856036ff959c4.dir
+      size: 3077738014
+      nfiles: 12005
+    - path: src/data/prep_sod.py
+      hash: md5
+      md5: 7e8ca4b5c92a8ed366a939956617d04b
+      size: 2953
+    outs:
+    - path: data/processed/sod/
+      hash: md5
+      md5: 475d71e541b9c4c311d69c310dc2354c.dir
+      size: 3051872685
+      nfiles: 8000

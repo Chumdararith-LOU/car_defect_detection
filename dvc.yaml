@@ -1,8 +1,17 @@
 stages:
+  prep_sod_data:
+    cmd: python src/data/prep_sod.py
+    deps:
+      - src/data/prep_sod.py
+      - data/raw/CarDD_release/CarDD_SOD/
+    outs:
+      - data/processed/sod/
+
   consolidate_data:
-    cmd: python src/data/consolidate.py
+    cmd: python src/data/consolidate.py --config configs/data/Experiment_v1.yaml
     deps:
       - src/data/consolidate.py
+      - configs/data/Experiment_v1.yaml
       - data/raw/
     outs:
       - data/processed/yolo_seg/

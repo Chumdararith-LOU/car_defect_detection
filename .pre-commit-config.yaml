@@ -40,5 +40,5 @@ repos:
         name: 📦 Verify DVC Cache Synchronization
         entry: dvc status
         language: system
-        stages: [commit]
+        stages: [pre-commit]
         pass_filenames: false
