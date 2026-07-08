@@ -19,3 +19,17 @@ services:
                --host 0.0.0.0
                --port 5000"
     restart: unless-stopped
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: production_minio_vault
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: root
+      MINIO_ROOT_PASSWORD: secure_vault_password_2026
+    volumes:
+      - /home/lamacpp/secure_workspace/minio_data:/data
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
