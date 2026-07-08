@@ -1,6 +1,7 @@
 import shutil
 import cv2
 from pathlib import Path
+import yaml
 
 
 def verify_and_copy_sod(raw_sod_dir, processed_sod_dir):
@@ -70,6 +71,19 @@ def verify_and_copy_sod(raw_sod_dir, processed_sod_dir):
             total_valid += 1
 
         print(f"    -> Successfully verified and copied {valid_count} pairs.")
+
+    yaml_data = {
+        "path": ".",
+        "train": "train/images",
+        "val": "val/images",
+        "test": "test/images",
+        "names": {0: "background", 1: "anomaly"},
+    }
+
+    yaml_path = out_dir / "sod_data.yaml"
+    with open(yaml_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(yaml_data, f, default_flow_style=False, sort_keys=False)
+    print(f"    [+] Auto-generated semantic dataset descriptor at: {yaml_path}")
 
     print(f"\n[✓] SOD Dataset preparation complete. Total clean pairs: {total_valid}")
 

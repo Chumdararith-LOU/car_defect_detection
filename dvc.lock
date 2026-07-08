@@ -32,11 +32,11 @@ stages:
       nfiles: 12005
     - path: src/data/prep_sod.py
       hash: md5
-      md5: 7e8ca4b5c92a8ed366a939956617d04b
-      size: 2953
+      md5: 41aea9e63876db9c61f835f65b42d17b
+      size: 3412
     outs:
     - path: data/processed/sod/
       hash: md5
-      md5: 475d71e541b9c4c311d69c310dc2354c.dir
-      size: 3051872685
-      nfiles: 8000
+      md5: 21adeb8f62176f4df498e42d1f07cdaa.dir
+      size: 3051872783
+      nfiles: 8001
