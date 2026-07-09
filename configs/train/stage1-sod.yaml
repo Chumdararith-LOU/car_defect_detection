@@ -4,7 +4,7 @@ dataset:
 
 # Neural Network Configurations
 training:
-  backbone: "yolov26n-sem.pt"              # Pure Semantic Segmentation variant (NMS-free / Instance-agnostic)
+  backbone: "yolo26n-sem.pt"              # Pure Semantic Segmentation variant (NMS-free / Instance-agnostic)
   epochs: 100
   batch_size: 32                           # Larger batch size supported due to downscaled imgsz
   lr0: 0.001
