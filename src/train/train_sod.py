@@ -23,8 +23,6 @@ def run_sod_training():
 
     train_cfg = load_yaml(args.train_config)
 
-    mlflow.set_tracking_uri("file:./mlruns")
-
     os.environ["MLFLOW_TRACKING_URI"] = "http://127.0.0.1:5000"
     mlflow.set_tracking_uri("http://127.0.0.1:5000")
     mlflow.set_experiment("Automated_Car_Defect_Stage1_SOD")
@@ -37,7 +35,7 @@ def run_sod_training():
         training_params = train_cfg.get("training", {})
         mlflow.log_params(
             {
-                "model_backbone": training_params.get("backbone", "yolov26n-sem.pt"),
+                "model_backbone": training_params.get("backbone", "yolo26n-sem.pt"),
                 "epochs": training_params.get("epochs", 100),
                 "batch_size": training_params.get("batch_size", 32),
                 "input_img_size": train_cfg.get("dataset", {}).get("imgsz", 256),
@@ -54,7 +52,7 @@ def run_sod_training():
         print(
             f"[+] Initializing YOLO Semantic Engine with: {training_params.get('backbone')}"
         )
-        model = YOLO(training_params.get("backbone", "yolov26n-sem.pt"))
+        model = YOLO(training_params.get("backbone", "yolo26n-sem.pt"))
 
         # Execute Training Trace
         with mlflow.start_span(name="sod_semantic_training") as span:
