@@ -51,7 +51,7 @@ def main():
     os.environ["MLFLOW_ENABLE_SYSTEM_METRICS_LOGGING"] = "true"
 
     # Passive background logging initialization
-    settings.update({"mlflow": True, "tensorboard": True})
+    settings.update({"mlflow": False, "tensorboard": True})
 
     project_name = cfg.get("project", cfg.get("project_name", "car_defect_detection"))
     run_name = cfg.get("name", cfg.get("run_name", "experiment_run"))
@@ -67,7 +67,8 @@ def main():
 
     mlflow.set_experiment(project_name)
 
-    # Explicit MLflow block managing complete code/data lineage
+    os.environ["MLFLOW_KEEP_RUN_ACTIVE"] = "True"
+
     with mlflow.start_run(run_name=run_name):
         # Enforce data lineage tags
         git_hash = get_git_commit()
