@@ -5,6 +5,7 @@ import argparse
 import yaml
 import mlflow
 import subprocess
+import time
 from ultralytics import YOLO
 from ultralytics import settings
 
@@ -47,8 +48,10 @@ def main():
     mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001")
     mlflow.set_tracking_uri(mlflow_uri)
 
+    os.environ["MLFLOW_ENABLE_SYSTEM_METRICS_LOGGING"] = "true"
+
     # Passive background logging initialization
-    settings.update({"mlflow": True, "tensorboard": True})
+    settings.update({"mlflow": False, "tensorboard": True})
 
     project_name = cfg.get("project", cfg.get("project_name", "car_defect_detection"))
     run_name = cfg.get("name", cfg.get("run_name", "experiment_run"))
@@ -101,6 +104,13 @@ def main():
             project=project_name,
             name=run_name,
         )
+
+        time.sleep(2)
+
+        yolo_save_dir = f"{project_name}/{run_name}"
+        if os.path.exists(yolo_save_dir):
+            print(f"Uploading YOLO artifacts from {yolo_save_dir} to MLflow...")
+            mlflow.log_artifacts(yolo_save_dir, artifact_path="yolo_evaluation_data")
 
     print(
         f"Model training run complete. Weights archived under {project_name}/{run_name}/"
