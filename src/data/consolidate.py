@@ -93,13 +93,21 @@ def collect_and_parse_pools(coco_json_paths, class_mapping, config):
 
                 class_idx = class_mapping[raw_label]
 
-                if "segmentation" not in ann or not ann["segmentation"]:
-                    continue
-
                 img_w, img_h = img_info["width"], img_info["height"]
+
+                segmentations = ann.get("segmentation", [])
+                if not segmentations or len(segmentations) == 0:
+                    if "bbox" in ann:
+                        bx, by, bw, bh = ann["bbox"]
+                        segmentations = [
+                            [bx, by, bx + bw, by, bx + bw, by + bh, bx, by + bh]
+                        ]
+                    else:
+                        continue
+
                 min_points = config.get("min_polygon_points", 6)
 
-                for seg in ann["segmentation"]:
+                for seg in segmentations:
                     if len(seg) < min_points:
                         continue
                     normalized_coords = []
