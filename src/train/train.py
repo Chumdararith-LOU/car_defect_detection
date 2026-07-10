@@ -44,7 +44,7 @@ def main():
     print(f"Loading configuration from: {args.config}")
     cfg = load_config(args.config)
 
-    mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+    mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001")
     mlflow.set_tracking_uri(mlflow_uri)
 
     # Passive background logging initialization
@@ -61,6 +61,8 @@ def main():
     model = YOLO(cfg["model_preset"])
 
     print(f"Launching experiment: project={project_name}, run={run_name}")
+
+    mlflow.set_experiment(project_name)
 
     # Explicit MLflow block managing complete code/data lineage
     with mlflow.start_run(run_name=run_name):

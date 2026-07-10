@@ -6,7 +6,7 @@ from pathlib import Path
 
 def load_dataset_config():
     """Helper fixture to parse active dataset boundaries."""
-    config_path = Path("data/processed/yolo_seg/data.yaml")
+    config_path = Path("data/processed/Experiment_v1/data.yaml")
     if not config_path.exists():
         pytest.skip("data.yaml not generated yet. Run 'make data-consolidate' first.")
     with open(config_path, "r") as f:
