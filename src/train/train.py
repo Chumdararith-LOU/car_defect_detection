@@ -108,10 +108,13 @@ def main():
 
         time.sleep(2)
 
-        yolo_save_dir = f"{project_name}/{run_name}"
-        if os.path.exists(yolo_save_dir):
-            print(f"Uploading YOLO artifacts from {yolo_save_dir} to MLflow...")
-            mlflow.log_artifacts(yolo_save_dir, artifact_path="yolo_evaluation_data")
+        actual_save_dir = str(model.trainer.save_dir)
+
+        if os.path.exists(actual_save_dir):
+            print(f"Uploading YOLO artifacts from {actual_save_dir} to MLflow...")
+            mlflow.log_artifacts(actual_save_dir, artifact_path="yolo_evaluation_data")
+        else:
+            print(f"Warning: Could not locate YOLO save directory at {actual_save_dir}")
 
     print(
         f"Model training run complete. Weights archived under {project_name}/{run_name}/"
