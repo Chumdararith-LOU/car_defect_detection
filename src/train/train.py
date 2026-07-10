@@ -51,7 +51,7 @@ def main():
     os.environ["MLFLOW_ENABLE_SYSTEM_METRICS_LOGGING"] = "true"
 
     # Passive background logging initialization
-    settings.update({"mlflow": False, "tensorboard": True})
+    settings.update({"mlflow": True, "tensorboard": True})
 
     project_name = cfg.get("project", cfg.get("project_name", "car_defect_detection"))
     run_name = cfg.get("name", cfg.get("run_name", "experiment_run"))
