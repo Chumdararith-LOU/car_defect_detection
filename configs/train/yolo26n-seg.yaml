@@ -5,15 +5,15 @@ project_name: car_defect_detection
 run_name: yolo26n_car_defect_detection
 
 # Dataset Paths
-dataset_config: "/home/rith/car_defect_detection/data/processed/yolo_seg/data.yaml"
+dataset_config: "data/processed/Experiment_v1/data.yaml"
 
 # Hardware / Performance Parameters
-epochs: 150
+epochs: 5
 imgsz: 640
 batch_size: 32
 device: 0
 workers: 8
-amp: false
+amp: true
 
 # Environmental Defense Augmentations
 augmentations:
