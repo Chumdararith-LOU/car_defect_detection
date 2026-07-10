@@ -49,111 +49,85 @@ def clean_and_build_scaffolding(processed_dir):
         (processed_dir / split / "labels").mkdir(parents=True, exist_ok=True)
 
 
-def collect_and_parse_pools(raw_data_dir, dataset_maps, target_classes):
-    """Scans all source directories and pools instances based on mapped rules."""
-    class_to_idx = {cls: idx for idx, cls in enumerate(target_classes)}
-
+def collect_and_parse_pools(coco_json_paths, class_mapping, config):
+    """Scans explicitly defined COCO JSON files and pools instances based on mapping rules."""
     split_pools = {
         "train": defaultdict(list),
         "val": defaultdict(list),
         "test": defaultdict(list),
     }
-    print("[+] Scanning raw dataset directories and validating text mappings...")
+    print("[+] Parsing COCO JSON files from config...")
 
-    if not raw_data_dir.exists():
-        raise FileNotFoundError(
-            f"Source directory missing. Ensure data exists at: {raw_data_dir.resolve()}"
-        )
-
-    for dataset_name in os.listdir(raw_data_dir):
-        dataset_path = raw_data_dir / dataset_name
-        if not dataset_path.is_dir():
+    for split, json_path_str in coco_json_paths.items():
+        json_file = Path(json_path_str)
+        if not json_file.exists():
+            print(f"[-] Missing JSON for {split}: {json_file}")
             continue
 
-        if dataset_name not in dataset_maps:
-            print(f"Skipping directory (No explicit translation rules): {dataset_name}")
-            continue
+        split_dir = json_file.parent
+        with open(json_file, "r") as f:
+            coco_data = json.load(f)
 
-        current_label_map = dataset_maps[dataset_name]
+        categories = {cat["id"]: cat["name"] for cat in coco_data.get("categories", [])}
+        images = {img["id"]: img for img in coco_data.get("images", [])}
 
-        # Normalize incoming validation variations cleanly into the MLOps pipeline
-        for split in ["train", "valid", "val", "test"]:
-            split_dir = dataset_path / split
-            if not split_dir.exists() and split in ["valid", "val"]:
-                # Cross-check naming variations dynamically
-                alt_split = "val" if split == "valid" else "valid"
-                split_dir = dataset_path / alt_split
+        img_to_anns = defaultdict(list)
+        for ann in coco_data.get("annotations", []):
+            img_to_anns[ann["image_id"]].append(ann)
 
-            if not split_dir.exists():
+        for img_id, anns in img_to_anns.items():
+            img_info = images[img_id]
+            src_img_path = split_dir / img_info["file_name"]
+            if not src_img_path.exists():
                 continue
 
-            json_file = split_dir / "_annotations.coco.json"
-            if not json_file.exists():
-                continue
+            yolo_lines = []
+            detected_classes_in_image = set()
 
-            with open(json_file, "r") as f:
-                coco_data = json.load(f)
+            for ann in anns:
+                raw_label = categories.get(ann["category_id"])
 
-            categories = {
-                cat["id"]: cat["name"] for cat in coco_data.get("categories", [])
-            }
-            images = {img["id"]: img for img in coco_data.get("images", [])}
-
-            img_to_anns = defaultdict(list)
-            for ann in coco_data.get("annotations", []):
-                img_to_anns[ann["image_id"]].append(ann)
-
-            # Direct the internal routing to match 'train', 'val', or 'test'
-            yolo_split = "val" if split in ["valid", "val"] else split
-
-            for img_id, anns in img_to_anns.items():
-                img_info = images[img_id]
-                src_img_path = split_dir / img_info["file_name"]
-                if not src_img_path.exists():
+                # Use our direct class mapping from the YAML
+                if raw_label not in class_mapping:
                     continue
 
-                yolo_lines = []
-                detected_classes_in_image = set()
+                class_idx = class_mapping[raw_label]
 
-                for ann in anns:
-                    raw_label = categories.get(ann["category_id"])
-                    target_class = current_label_map.get(raw_label)
+                if "segmentation" not in ann or not ann["segmentation"]:
+                    continue
 
-                    if not target_class:
+                img_w, img_h = img_info["width"], img_info["height"]
+                min_points = config.get("min_polygon_points", 6)
+
+                for seg in ann["segmentation"]:
+                    if len(seg) < min_points:
                         continue
+                    normalized_coords = []
+                    for i in range(0, len(seg), 2):
+                        nx = seg[i] / img_w
+                        ny = seg[i + 1] / img_h
+                        if config.get("clip_coordinates", True):
+                            nx = max(0.0, min(1.0, nx))
+                            ny = max(0.0, min(1.0, ny))
+                        normalized_coords.append(f"{nx:.6f}")
+                        normalized_coords.append(f"{ny:.6f}")
 
-                    if "segmentation" not in ann or not ann["segmentation"]:
-                        continue
+                    yolo_lines.append(f"{class_idx} " + " ".join(normalized_coords))
+                    detected_classes_in_image.add(raw_label)
 
-                    class_idx = class_to_idx[target_class]
-                    img_w, img_h = img_info["width"], img_info["height"]
-
-                    for seg in ann["segmentation"]:
-                        if len(seg) < 6:
-                            continue
-                        normalized_coords = []
-                        for i in range(0, len(seg), 2):
-                            nx = max(0.0, min(1.0, seg[i] / img_w))
-                            ny = max(0.0, min(1.0, seg[i + 1] / img_h))
-                            normalized_coords.append(f"{nx:.6f}")
-                            normalized_coords.append(f"{ny:.6f}")
-
-                        yolo_lines.append(f"{class_idx} " + " ".join(normalized_coords))
-                        detected_classes_in_image.add(target_class)
-
-                if yolo_lines:
-                    primary_class = sorted(list(detected_classes_in_image))[0]
-                    split_pools[yolo_split][primary_class].append(
-                        {
-                            "src_path": src_img_path,
-                            "lines": yolo_lines,
-                            "ext": os.path.splitext(img_info["file_name"])[1],
-                        }
-                    )
+            if yolo_lines:
+                primary_class = sorted(list(detected_classes_in_image))[0]
+                split_pools[split][primary_class].append(
+                    {
+                        "src_path": src_img_path,
+                        "lines": yolo_lines,
+                        "ext": os.path.splitext(img_info["file_name"])[1],
+                    }
+                )
     return split_pools
 
 
-def balance_and_write_dataset(split_pools, processed_dir, target_classes, limits):
+def balance_and_write_dataset(split_pools, processed_dir, target_classes):
     """Applies class balancing caps and saves assets sequentially."""
     print("\n[⚙] Enforcing image-level balancing rules & archiving files...")
     global_file_counter = 0
@@ -167,13 +141,6 @@ def balance_and_write_dataset(split_pools, processed_dir, target_classes, limits
 
             random.seed(42)
             random.shuffle(img_list)
-
-            if yolo_split == "train" and len(img_list) > limits["max_images_train"]:
-                img_list = img_list[: limits["max_images_train"]]
-            elif yolo_split == "val" and len(img_list) > limits["max_images_val"]:
-                img_list = img_list[: limits["max_images_val"]]
-            elif yolo_split == "test" and len(img_list) > limits["max_images_test"]:
-                img_list = img_list[: limits["max_images_test"]]
 
             split_img_stats[yolo_split][target_class] += len(img_list)
 
@@ -234,20 +201,22 @@ def main():
         print(f" Error: {e}")
         return
 
-    # Extract configs into Path objects / variables
-    raw_data_dir = Path(config["paths"]["raw_data_dir"])
-    processed_dir = Path(config["paths"]["processed_dir"])
-    target_classes = config["target_classes"]
-    dataset_maps = config["dataset_maps"]
-    limits = config["limits"]
+    processed_dir = Path(config["output_processed_dir"])
+    coco_json_paths = config.get("coco_json_paths", {})
+    class_mapping = config["class_mapping"]
+
+    # Generate the target_classes list sequentially based on the index in the mapping
+    target_classes = [
+        k for k, v in sorted(class_mapping.items(), key=lambda item: item[1])
+    ]
 
     # Execute Pipeline
     clean_and_build_scaffolding(processed_dir)
 
-    pools = collect_and_parse_pools(raw_data_dir, dataset_maps, target_classes)
+    pools = collect_and_parse_pools(coco_json_paths, class_mapping, config)
 
     mask_stats, img_stats, total_images = balance_and_write_dataset(
-        pools, processed_dir, target_classes, limits
+        pools, processed_dir, target_classes
     )
 
     generate_metadata_yaml(processed_dir, target_classes)

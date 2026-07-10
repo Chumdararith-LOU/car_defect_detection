@@ -1,57 +1,37 @@
-paths:
-  raw_data_dir: "data/raw"
-  processed_dir: "data/processed/yolo_seg"
+# 1. Pipeline Paths
+raw_data_dir: "data/raw/Car defect detection.v2i.coco"
+output_processed_dir: "data/processed/Experiment_v1"
 
-limits:
-  max_images_train: 2000
-  max_images_val: 250
-  max_images_test: 250
+# 2. Roboflow COCO Annotation Paths (To be processed in Step 2)
+coco_json_paths:
+  train: "data/raw/Car defect detection.v2i.coco/train/_annotations.coco.json"
+  val: "data/raw/Car defect detection.v2i.coco/valid/_annotations.coco.json"
+  test: "data/raw/Car defect detection.v2i.coco/test/_annotations.coco.json"
 
-target_classes:
-  - "scratch"
-  - "dent"
-  - "stain"
-  - "rust"
-  - "broken"
+# 3. Class Taxonomy Harmonization
+# Mapping Roboflow's raw string names to YOLO integer IDs
+class_mapping:
+  "Dent": 0
+  "Scratch": 1
+  "Glass-Break": 2
+  "Accident": 3
+  "car-defect": 4
 
-dataset_maps:
-  "Car defect detection.v2i.coco":
-    "Scratch": "scratch"
-    "Dent": "dent"
-    "Glass-Break": "broken"
-    "Accident": "broken"
-    "car-defect": "broken"
-  "Car defect detection.v6i.coco":
-    "Scratch": "scratch"
-    "Dent": "dent"
-    "Glass-Break": "broken"
-    "Accident": "broken"
-    "car-defect": "broken"
-  "Rust Detection.v1i.coco":
-    "Rust": "rust"
-    "rust": "rust"
-    "copper corrosion": "rust"
-    "corroded-part": "rust"
-    "corrosion": "rust"
-    "iron rust": "rust"
-    "mild-corrosion": "rust"
-    "moderate-corrosion": "rust"
-    "severe-corrosion": "rust"
-  "crackbird detection 3.v6-v1.coco":
-    "Bird Drop": "stain"
-    "Cracked": "broken"
-  "dd.v1i.coco":
-    "dent": "dent"
-  "scarcth_2.v9i.coco":
-    "scratch": "scratch"
-    "scarcth-2": "scratch"
-    "dent": "dent"
-  "socarC.v1i.coco":
-    "Scratched": "scratch"
-    "Crushed": "dent"
-    "Breakage": "broken"
-    "Separated": "broken"
-  "YoloForCarDefect.v1i.coco":
-    "-": "dent"
-    "Roboflow is an end-to-end computer vision platform that helps you": "scratch"
-    "Car defect detection - v7 2024-04-12 10-29pm": "dent"
+# 4. YOLOv26 Metadata Descriptor (Will be auto-generated as data.yaml)
+yolo_metadata:
+  path: "../data/processed/Experiment_v1" # Relative to training execution environment
+  train: "train/images"
+  val: "val/images"
+  test: "test/images"
+  names:
+    0: dent
+    1: scratch
+    2: glass_break
+    3: accident
+    4: general_defect
+
+# 5. MLOps Processing Settings
+seed: 42
+remove_corrupted_images: True
+min_polygon_points: 6
+clip_coordinates: True
