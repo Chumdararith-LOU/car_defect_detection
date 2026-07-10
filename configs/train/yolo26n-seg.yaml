@@ -1,7 +1,7 @@
 # Task Meta
 task: segment
 model_preset: yolo26n-seg.pt
-project_name: car_defect_detection
+project_name: car_defect_detection_test2
 run_name: yolo26n_car_defect_detection
 
 # Dataset Paths
