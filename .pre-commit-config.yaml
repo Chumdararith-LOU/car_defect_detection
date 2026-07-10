@@ -16,6 +16,20 @@ repos:
         name: 🧹 Strip Trailing Whitespace
         description: Trims unnecessary whitespace from lines of code.
 
+      - id: check-added-large-files
+        name: 🚫 Block Large Files (Use DVC Instead)
+        args: ['--maxkb=2000']
+
+      - id: detect-private-key
+        name: 🔐 Prevent Secret Key Leaks
+
+      - id: check-json
+        name: 🔍 Validate JSON Data
+        description: Ensures COCO/Supervisely annotations and settings are valid JSON.
+
+      - id: check-merge-conflict
+        name: ⚔️ Prevent Unresolved Merge Conflicts
+
   - repo: https://github.com/psf/black
     rev: 24.4.2
     hooks:
