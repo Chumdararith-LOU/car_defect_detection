@@ -10,7 +10,7 @@ from jinja2 import Environment, FileSystemLoader
 def setup_directories(run_name):
     """Creates isolated reporting directories for the specific run."""
     docs_dir = "docs/reports"
-    fig_dir = f"reports/figures/{run_name}"
+    fig_dir = f"docs/reports/figures/{run_name}"
     os.makedirs(docs_dir, exist_ok=True)
     os.makedirs(fig_dir, exist_ok=True)
     return docs_dir, fig_dir
@@ -36,7 +36,7 @@ def fetch_mlflow_data(project_name, run_name):
         )
 
     run = runs[0]
-    return run.data.params, run.data.metrics, run.data.tags
+    return run.data.params, run.data.metrics, run.data.tags, run.info.run_id
 
 
 def gather_artifacts(source_dir, dest_fig_dir):
@@ -93,7 +93,7 @@ def main():
     output_md_path = os.path.join(docs_dir, f"{args.run_name}_report.md")
 
     print(f" Fetching telemetry for {args.project} -> {args.run_name}...")
-    params, metrics, tags = fetch_mlflow_data(args.project, args.run_name)
+    params, metrics, tags, run_id = fetch_mlflow_data(args.project, args.run_name)
 
     target_dir = (
         args.yolo_dir if args.yolo_dir else os.path.join(args.project, args.run_name)
@@ -110,8 +110,9 @@ def main():
         "date_generated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "params": params,
         "metrics": metrics,
-        "tags": tags,  # Feeds the template variables like {{ tags.git_commit }}
+        "tags": tags,
         "figures": figures,
+        "run_id": run_id,
     }
 
     render_report(args.template, output_md_path, payload)

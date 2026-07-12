@@ -1,0 +1,5 @@
+format: jb-book
+root: index
+
+chapters:
+  - file: reports/yolo26n_car_defect_detection_report

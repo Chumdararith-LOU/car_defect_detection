@@ -1,42 +1,181 @@
-# 📊 Experiment Report: {{ run_name }}
+# 📊 Experiment Report: `{{ run_name }}`
 
-**Project:** {{ project_name }}
-**Date Generated:** {{ date_generated }}
-**Git Commit Lineage:** `{{ tags.get('git_commit', 'Unknown') }}`
+> **Project:** {{ project_name }}
+> **Generated:** {{ date_generated }}
+> **Git Commit:** `{{ tags.get('git_commit', 'unknown') }}`
+> **MLflow Run ID:** `{{ run_id }}`
 
 ---
 
-## ⚙️ Model & Hyperparameters
-*This section dynamically lists the parameters used for this specific run.*
+## 🎯 Executive Summary
+
+```{admonition} Key Performance Indicators
+:class: tip
+{% set box_p = metrics.get('metrics/precision(B)') %}
+{% set box_r = metrics.get('metrics/recall(B)') %}
+{% set box_map50 = metrics.get('metrics/mAP50(B)') %}
+{% set box_map5095 = metrics.get('metrics/mAP50-95(B)') %}
+{% set mask_p = metrics.get('metrics/precision(M)') %}
+{% set mask_r = metrics.get('metrics/recall(M)') %}
+{% set mask_map50 = metrics.get('metrics/mAP50(M)') %}
+{% set mask_map5095 = metrics.get('metrics/mAP50-95(M)') %}
+
+| Metric | Bounding Box | Segmentation Mask |
+| :--- | :---: | :---: |
+| **Precision** | `{% if box_p %}{{ box_p | round(4) }}{% else %}—{% endif %}` | `{% if mask_p %}{{ mask_p | round(4) }}{% else %}—{% endif %}` |
+| **Recall** | `{% if box_r %}{{ box_r | round(4) }}{% else %}—{% endif %}` | `{% if mask_r %}{{ mask_r | round(4) }}{% else %}—{% endif %}` |
+| **mAP@50** | `{% if box_map50 %}{{ box_map50 | round(4) }}{% else %}—{% endif %}` | `{% if mask_map50 %}{{ mask_map50 | round(4) }}{% else %}—{% endif %}` |
+| **mAP@50-95** | `{% if box_map5095 %}{{ box_map5095 | round(4) }}{% else %}—{% endif %}` | `{% if mask_map5095 %}{{ mask_map5095 | round(4) }}{% else %}—{% endif %}` |
+```
+
+---
+
+## 🏗️ Training Configuration
+
+### Core Architecture
 
 | Parameter | Value |
 | :--- | :--- |
-{% for key, value in params.items() %}
-| `{{ key }}` | {{ value }} |
-{% endfor %}
+| Model Preset | `{{ params.get('model_preset', '—') }}` |
+| Epochs | `{{ params.get('epochs', '—') }}` |
+| Batch Size | `{{ params.get('batch', '—') }}` |
+| Image Size | `{{ params.get('imgsz', '—') }}` |
+| Device | `{{ params.get('device', '—') }}` |
+| Workers | `{{ params.get('workers', '—') }}` |
+| AMP (Mixed Precision) | `{{ params.get('amp', '—') }}` |
+| Random Seed | `{{ params.get('seed', '—') }}` |
+
+### Environmental Augmentations
+
+| Augmentation | Value |
+| :--- | :--- |
+| HSV Hue | `{{ params.get('hsv_h', '—') }}` |
+| HSV Saturation | `{{ params.get('hsv_s', '—') }}` |
+| HSV Value | `{{ params.get('hsv_v', '—') }}` |
+| Degrees Rotation | `{{ params.get('degrees', '—') }}` |
+| Scale | `{{ params.get('scale', '—') }}` |
+| Perspective | `{{ params.get('perspective', '—') }}` |
+| Horizontal Flip | `{{ params.get('fliplr', '—') }}` |
+| Mosaic | `{{ params.get('mosaic', '—') }}` |
+| MixUp | `{{ params.get('mixup', '—') }}` |
+| Random Erasing | `{{ params.get('erasing', '—') }}` |
+| Close Mosaic (last N epochs) | `{{ params.get('close_mosaic', '—') }}` |
 
 ---
 
 ## 📈 Final Evaluation Metrics
-*These metrics were automatically pulled from the MLflow tracking server.*
+
+### Bounding Box Detection
 
 | Metric | Score |
 | :--- | :--- |
-{% for key, value in metrics.items() %}
-| **{{ key }}** | `{{ value | round(4) }}` |
-{% endfor %}
+| Precision | `{% if box_p %}{{ box_p | round(4) }}{% else %}—{% endif %}` |
+| Recall | `{% if box_r %}{{ box_r | round(4) }}{% else %}—{% endif %}` |
+| mAP@50 | `{% if box_map50 %}{{ box_map50 | round(4) }}{% else %}—{% endif %}` |
+| mAP@50-95 | `{% if box_map5095 %}{{ box_map5095 | round(4) }}{% else %}—{% endif %}` |
+
+### Instance Segmentation Masks
+
+| Metric | Score |
+| :--- | :--- |
+| Precision | `{% if mask_p %}{{ mask_p | round(4) }}{% else %}—{% endif %}` |
+| Recall | `{% if mask_r %}{{ mask_r | round(4) }}{% else %}—{% endif %}` |
+| mAP@50 | `{% if mask_map50 %}{{ mask_map50 | round(4) }}{% else %}—{% endif %}` |
+| mAP@50-95 | `{% if mask_map5095 %}{{ mask_map5095 | round(4) }}{% else %}—{% endif %}` |
+
+### Final Training Losses
+
+| Loss Component | Train (Final) | Validation (Final) |
+| :--- | :---: | :---: |
+| Box Loss | `{{ metrics.get('train/box_loss', '—') }}` | `{{ metrics.get('val/box_loss', '—') }}` |
+| Segmentation Loss | `{{ metrics.get('train/seg_loss', '—') }}` | `{{ metrics.get('val/seg_loss', '—') }}` |
+| Classification Loss | `{{ metrics.get('train/cls_loss', '—') }}` | `{{ metrics.get('val/cls_loss', '—') }}` |
+| DFL Loss | `{{ metrics.get('train/dfl_loss', '—') }}` | `{{ metrics.get('val/dfl_loss', '—') }}` |
 
 ---
 
-## 🖼️ Visualizations & Artifacts
-*Below are the evaluation curves and matrices generated during training.*
+## 🖼️ Visualizations
 
 {% if figures %}
-<div align="center">
-  {% for fig in figures %}
-  <img src="../../reports/figures/{{ run_name }}/{{ fig }}" width="45%" style="margin: 10px;">
-  {% endfor %}
-</div>
+{% set ns = namespace(curves=[], cms=[], batches=[], other=[]) %}
+{% for fig in figures %}
+  {% if fig.endswith('_curve.png') %}
+    {% set ns.curves = ns.curves + [fig] %}
+  {% elif fig.startswith('confusion_matrix') %}
+    {% set ns.cms = ns.cms + [fig] %}
+  {% elif fig.startswith('train_batch') or fig.startswith('val_batch') %}
+    {% set ns.batches = ns.batches + [fig] %}
+  {% else %}
+    {% set ns.other = ns.other + [fig] %}
+  {% endif %}
+{% endfor %}
+
+### 📊 Performance Curves
+
+{% if ns.curves %}
+{% for fig in ns.curves %}
+<figure style="display: inline-block; width: 48%; margin: 5px; text-align: center;">
+  <img src="../figures/{{ run_name }}/{{ fig }}" style="width: 100%;">
+  <figcaption><em>{{ fig | replace('_curve.png', '') | replace('_', ' ') | title }} Curve</em></figcaption>
+</figure>
+{% endfor %}
 {% else %}
-*No visual artifacts were found for this run.*
+*No performance curves were generated.*
 {% endif %}
+
+### 🎯 Confusion Analysis
+
+{% if ns.cms %}
+{% for fig in ns.cms %}
+<figure style="display: inline-block; width: 48%; margin: 5px; text-align: center;">
+  <img src="../figures/{{ run_name }}/{{ fig }}" style="width: 100%;">
+  <figcaption><em>{{ fig | replace('.png', '') | replace('_', ' ') | title }}</em></figcaption>
+</figure>
+{% endfor %}
+{% else %}
+*No confusion matrices were generated.*
+{% endif %}
+
+### 🖼️ Training Overview
+
+{% if 'results.png' in figures %}
+<figure style="text-align: center;">
+  <img src="../figures/{{ run_name }}/results.png" style="width: 100%; max-width: 1000px;">
+  <figcaption><em>Combined Training Curves — Loss & Metrics across all Epochs</em></figcaption>
+</figure>
+{% endif %}
+
+### 🔬 Sample Predictions
+
+{% if ns.batches %}
+{% for fig in ns.batches %}
+<figure style="display: inline-block; width: 32%; margin: 3px; text-align: center;">
+  <img src="../figures/{{ run_name }}/{{ fig }}" style="width: 100%;">
+  <figcaption><em>{{ fig | replace('.jpg', '') | replace('_', ' ') | title }}</em></figcaption>
+</figure>
+{% endfor %}
+{% else %}
+*No sample prediction batches were captured.*
+{% endif %}
+
+{% else %}
+
+*No visual artifacts were found for this run.*
+
+{% endif %}
+
+---
+
+## 🔗 Reproducibility & Lineage
+
+```{admonition} Traceability Metadata
+:class: important
+
+| Attribute | Value |
+| :--- | :--- |
+| **MLflow Run ID** | `{{ run_id }}` |
+| **Git Commit** | `{{ tags.get('git_commit', 'unknown') }}` |
+| **Configuration Blueprint** | `{{ params.get('config_blueprint', '—') }}` |
+| **Report Generator** | `src/eval/validate.py` |
+| **Template** | `reports/templates/experiment_report.md.j2` |
+```
