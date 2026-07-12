@@ -54,7 +54,11 @@ def gather_artifacts(source_dir, dest_fig_dir):
 
 def render_report(template_path, output_path, data):
     """Injects MLflow data into the Jinja2 Markdown template."""
-    env = Environment(loader=FileSystemLoader(os.path.dirname(template_path)))
+    env = Environment(
+        loader=FileSystemLoader(os.path.dirname(template_path)),
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
     template = env.get_template(os.path.basename(template_path))
 
     rendered_md = template.render(**data)
