@@ -1,14 +1,60 @@
+import os
 import argparse
 import yaml
 from pathlib import Path
 import mlflow
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from ultralytics import YOLO
-import os
 
 
 def load_yaml(yaml_path):
     with open(yaml_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+class HybridSODLoss(nn.Module):
+    """
+    Multi-loss optimization for Salient Object Detection (SOD).
+    Combines BCE (Pixel alignment), IoU (Area alignment), and SSIM (Boundary sharpness).
+    """
+
+    def __init__(self, alpha=1.0, beta=1.0, gamma=1.0):
+        super(HybridSODLoss, self).__init__()
+        self.alpha = alpha
+        self.beta = beta
+        self.gamma = gamma
+
+    def forward(self, preds, targets):
+        # 1. Binary Cross-Entropy Loss (Expects raw logits)
+        bce_loss = F.binary_cross_entropy_with_logits(preds, targets)
+
+        # Apply sigmoid to convert logits to probabilities for IoU/SSIM
+        preds_sig = torch.sigmoid(preds)
+
+        # 2. IoU Loss
+        intersection = torch.sum(preds_sig * targets)
+        union = torch.sum(preds_sig + targets - preds_sig * targets)
+        iou_loss = 1.0 - (intersection / (union + 1e-6))
+
+        # 3. Structural Similarity (SSIM) Loss (Patch-level variance approximation)
+        mu_x = preds_sig.mean(dim=[2, 3], keepdim=True)
+        mu_y = targets.mean(dim=[2, 3], keepdim=True)
+        var_x = ((preds_sig - mu_x) ** 2).mean(dim=[2, 3], keepdim=True)
+        var_y = ((targets - mu_y) ** 2).mean(dim=[2, 3], keepdim=True)
+        cov_xy = ((preds_sig - mu_x) * (targets - mu_y)).mean(dim=[2, 3], keepdim=True)
+
+        c1, c2 = 1e-4, 9e-4
+        ssim = ((2 * mu_x * mu_y + c1) * (2 * cov_xy + c2)) / (
+            (mu_x**2 + mu_y**2 + c1) * (var_x + var_y + c2)
+        )
+        ssim_loss = 1.0 - ssim.mean()
+
+        # Weighted Hybrid Loss
+        return (
+            (self.alpha * bce_loss) + (self.beta * iou_loss) + (self.gamma * ssim_loss)
+        )
 
 
 def run_sod_training():
