@@ -69,14 +69,15 @@ def verify_and_copy_sod(raw_sod_dir, processed_sod_dir):
                 continue
 
             shutil.copy(img_src, img_out_dir / img_src.name)
-            shutil.copy(mask_src, mask_out_dir / mask_src.name)
+            mask[mask > 0] = 1
+            cv2.imwrite(str(mask_out_dir / mask_src.name), mask)
             valid_count += 1
             total_valid += 1
 
         print(f"    -> Successfully verified and copied {valid_count} pairs.")
 
     yaml_data = {
-        "path": ".",
+        "path": str(out_dir.absolute()),
         "train": "train/images",
         "val": "val/images",
         "test": "test/images",
