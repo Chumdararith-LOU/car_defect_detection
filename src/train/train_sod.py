@@ -1,17 +1,31 @@
 import os
 import argparse
 import yaml
+import subprocess
+import time
 from pathlib import Path
 import mlflow
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ultralytics import YOLO
+from ultralytics import YOLO, settings
 
 
 def load_yaml(yaml_path):
     with open(yaml_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def get_git_commit():
+    """Extracts the active short Git commit hash for metadata lineage."""
+    try:
+        return (
+            subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
+            .decode("utf-8")
+            .strip()
+        )
+    except Exception:
+        return "unknown"
 
 
 class HybridSODLoss(nn.Module):
@@ -72,21 +86,29 @@ def run_sod_training():
     train_cfg = load_yaml(args.train_config)
 
     os.environ["MLFLOW_TRACKING_URI"] = "http://127.0.0.1:5001"
+    os.environ["MLFLOW_ENABLE_SYSTEM_METRICS_LOGGING"] = "true"
     mlflow.set_tracking_uri("http://127.0.0.1:5001")
     mlflow.set_experiment("Automated_Car_Defect_Stage1_SOD")
+    settings.update({"mlflow": False, "tensorboard": True})
+    os.environ["MLFLOW_KEEP_RUN_ACTIVE"] = "True"
     run_name = f"Run_SOD_{Path(args.train_config).stem}"
 
     with mlflow.start_run(run_name=run_name) as run:
         print(f"[ℹ] MLflow Run Initialized for Stage 1 SOD. Run ID: {run.info.run_id}")
 
+        git_hash = get_git_commit()
+        mlflow.set_tag("git_commit", git_hash)
+        mlflow.log_artifact(args.train_config, artifact_path="configs")
+
         # Log Hyperparameters
         training_params = train_cfg.get("training", {})
         mlflow.log_params(
             {
+                "config_blueprint": args.train_config,
                 "model_backbone": training_params.get("backbone", "yolo26n-sem.pt"),
-                "epochs": training_params.get("epochs", 100),
-                "batch_size": training_params.get("batch_size", 32),
-                "input_img_size": train_cfg.get("dataset", {}).get("imgsz", 256),
+                "epochs": training_params.get("epochs", 50),
+                "batch_size": training_params.get("batch_size", 16),
+                "input_img_size": train_cfg.get("dataset", {}).get("imgsz", 1024),
                 "pixel_thresh": train_cfg.get("gating_thresholds", {}).get(
                     "pixel_thresh"
                 ),
@@ -131,13 +153,14 @@ def run_sod_training():
                 }
             )
 
-        output_dir = Path("artifacts/models/stage1_sod")
-        best_weights = output_dir / "weights" / "best.pt"
-        if best_weights.exists():
-            mlflow.log_artifact(str(best_weights), artifact_path="model_weights")
+        time.sleep(2)
+        actual_save_dir = str(model.trainer.save_dir)
 
-        for graph_file in output_dir.glob("*.png"):
-            mlflow.log_artifact(str(graph_file), artifact_path="evaluation_plots")
+        if os.path.exists(actual_save_dir):
+            print(f"Uploading YOLO artifacts from {actual_save_dir} to MLflow...")
+            mlflow.log_artifacts(actual_save_dir, artifact_path="yolo_evaluation_data")
+        else:
+            print(f"Warning: Could not locate YOLO save directory at {actual_save_dir}")
 
         print("[✓] Stage 1 SOD Training and MLflow registration complete.")
 
