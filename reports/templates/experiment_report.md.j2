@@ -115,7 +115,7 @@
 {% if ns.curves %}
 {% for fig in ns.curves %}
 <figure style="display: inline-block; width: 48%; margin: 5px; text-align: center;">
-  <img src="figures/{{ run_name }}/{{ fig }}" style="width: 100%;">
+  <img src="../figures/{{ run_name }}/{{ fig }}" style="width: 100%;">
   <figcaption><em>{{ fig | replace('_curve.png', '') | replace('_', ' ') | title }} Curve</em></figcaption>
 </figure>
 {% endfor %}
@@ -140,7 +140,7 @@
 
 {% if 'results.png' in figures %}
 <figure style="text-align: center;">
-  <img src="figures/{{ run_name }}/results.png" style="width: 100%; max-width: 1000px;">
+  <img src="../figures/{{ run_name }}/results.png" style="width: 100%; max-width: 1000px;">
   <figcaption><em>Combined Training Curves — Loss & Metrics across all Epochs</em></figcaption>
 </figure>
 {% endif %}
@@ -150,7 +150,7 @@
 {% if ns.batches %}
 {% for fig in ns.batches %}
 <figure style="display: inline-block; width: 32%; margin: 3px; text-align: center;">
-  <img src="figures/{{ run_name }}/{{ fig }}" style="width: 100%;">
+  <img src="../figures/{{ run_name }}/{{ fig }}" style="width: 100%;">
   <figcaption><em>{{ fig | replace('.jpg', '') | replace('_', ' ') | title }}</em></figcaption>
 </figure>
 {% endfor %}
