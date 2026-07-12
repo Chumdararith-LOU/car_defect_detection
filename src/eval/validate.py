@@ -85,7 +85,7 @@ def main():
     args = parser.parse_args()
 
     # 1. Bind to MLflow Server
-    mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+    mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001")
     mlflow.set_tracking_uri(mlflow_uri)
 
     # 2. Setup isolated paths
