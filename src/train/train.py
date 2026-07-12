@@ -77,6 +77,7 @@ def main():
 
         # Track the configuration blueprint path
         mlflow.log_param("config_blueprint", args.config)
+        mlflow.log_param("model_preset", cfg["model_preset"])
 
         model.train(
             # Task & Paths

@@ -11,14 +11,14 @@
 
 ```{admonition} Key Performance Indicators
 :class: tip
-{% set box_p = metrics.get('metrics/precision(B)') %}
-{% set box_r = metrics.get('metrics/recall(B)') %}
-{% set box_map50 = metrics.get('metrics/mAP50(B)') %}
-{% set box_map5095 = metrics.get('metrics/mAP50-95(B)') %}
-{% set mask_p = metrics.get('metrics/precision(M)') %}
-{% set mask_r = metrics.get('metrics/recall(M)') %}
-{% set mask_map50 = metrics.get('metrics/mAP50(M)') %}
-{% set mask_map5095 = metrics.get('metrics/mAP50-95(M)') %}
+{% set box_p = metrics.get('metrics/precisionB') %}
+{% set box_r = metrics.get('metrics/recallB') %}
+{% set box_map50 = metrics.get('metrics/mAP50B') %}
+{% set box_map5095 = metrics.get('metrics/mAP50-95B') %}
+{% set mask_p = metrics.get('metrics/precisionM') %}
+{% set mask_r = metrics.get('metrics/recallM') %}
+{% set mask_map50 = metrics.get('metrics/mAP50M') %}
+{% set mask_map5095 = metrics.get('metrics/mAP50-95M') %}
 
 | Metric | Bounding Box | Segmentation Mask |
 | :--- | :---: | :---: |
@@ -36,7 +36,7 @@
 
 | Parameter | Value |
 | :--- | :--- |
-| Model Preset | `{{ params.get('model_preset', '—') }}` |
+| Model Preset | `{{ params.get('model', '—') }}` |
 | Epochs | `{{ params.get('epochs', '—') }}` |
 | Batch Size | `{{ params.get('batch', '—') }}` |
 | Image Size | `{{ params.get('imgsz', '—') }}` |
