@@ -64,13 +64,15 @@ def run_sod_training():
     parser.add_argument(
         "--train_config", type=str, default="configs/train/stage1-sod.yaml"
     )
-    parser.add_argument("--data_config", type=str, default="configs/data/sod_data.yaml")
+    parser.add_argument(
+        "--data_config", type=str, default="configs/data/sod/sod_data.yaml"
+    )
     args = parser.parse_args()
 
     train_cfg = load_yaml(args.train_config)
 
-    os.environ["MLFLOW_TRACKING_URI"] = "http://127.0.0.1:5000"
-    mlflow.set_tracking_uri("http://127.0.0.1:5000")
+    os.environ["MLFLOW_TRACKING_URI"] = "http://127.0.0.1:5001"
+    mlflow.set_tracking_uri("http://127.0.0.1:5001")
     mlflow.set_experiment("Automated_Car_Defect_Stage1_SOD")
     run_name = f"Run_SOD_{Path(args.train_config).stem}"
 
