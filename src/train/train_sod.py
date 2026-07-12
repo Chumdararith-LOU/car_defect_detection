@@ -65,7 +65,7 @@ def run_sod_training():
         "--train_config", type=str, default="configs/train/stage1-sod.yaml"
     )
     parser.add_argument(
-        "--data_config", type=str, default="configs/data/sod/sod_data.yaml"
+        "--data_config", type=str, default="data/processed/sod/sod_data.yaml"
     )
     args = parser.parse_args()
 
