@@ -1,10 +1,7 @@
-import os
 import shutil
 import cv2
 from pathlib import Path
 import yaml
-import numpy as np
-from torch.utils.data import Dataset
 
 
 def verify_and_copy_sod(raw_sod_dir, processed_sod_dir):
@@ -92,71 +89,9 @@ def verify_and_copy_sod(raw_sod_dir, processed_sod_dir):
     print(f"\n[✓] SOD Dataset preparation complete. Total clean pairs: {total_valid}")
 
 
-class CarDDSODDataset(Dataset):
-    """
-    Custom PyTorch Dataset class designed to parse the CarDD_SOD
-    Salient Object Detection directory structures using .lst tracking files.
-    """
-
-    def __init__(self, root_dir, list_file_name="train_pair.lst", transform=None):
-        self.root_dir = root_dir
-        self.transform = transform
-        self.images_list = []
-        self.masks_list = []
-
-        # Parse matching pairs from .lst list files
-        list_file_path = os.path.join(root_dir, list_file_name)
-        with open(list_file_path, "r", encoding="utf-8") as f:
-            for line in f:
-                parts = line.strip().split()
-                if not parts:
-                    continue
-
-                if len(parts) >= 2:
-                    self.images_list.append(os.path.join(root_dir, parts[0]))
-                    self.masks_list.append(os.path.join(root_dir, parts[1]))
-                else:
-                    # Fallback for missing relative paths in .lst
-                    img_filename = parts[0]
-                    stem = Path(img_filename).stem
-                    prefix = Path(root_dir).name
-                    self.images_list.append(
-                        os.path.join(root_dir, f"{prefix}-Image/{stem}.jpg")
-                    )
-                    self.masks_list.append(
-                        os.path.join(root_dir, f"{prefix}-Mask/{stem}.png")
-                    )
-
-    def __len__(self):
-        return len(self.images_list)
-
-    def __getitem__(self, idx):
-        # Read RGB Input Image
-        img_path = self.images_list[idx]
-        image = cv2.imread(img_path)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        # Read Grayscale Binary Target Mask (0 vs 255)
-        mask_path = self.masks_list[idx]
-        mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-
-        # Normalize target mask to [0.0, 1.0]
-        _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
-        mask = (mask / 255.0).astype(np.float32)
-
-        sample = {"image": image, "mask": mask, "path": img_path}
-
-        if self.transform:
-            sample = self.transform(sample)
-
-        return sample
-
-
 if __name__ == "__main__":
-    # Pointing directly to your terminal's file structure
     RAW_SOD = "data/raw/CarDD_release/CarDD_SOD"
     PROCESSED_SOD = "data/processed/sod"
-
     print("=====================================================")
     print("   INITIALIZING SOD DATASET PREPARATION")
     print("=====================================================")
