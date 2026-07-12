@@ -24,7 +24,7 @@ eval:
 	python src/eval/validate.py \
 		--project $(PROJECT_NAME) \
 		--run-name $(RUN_NAME) \
-		--yolo-dir $(PROJECT_NAME)/$(RUN_NAME)
+		--yolo-dir runs/segment/$(PROJECT_NAME)/$(RUN_NAME)
 
 export:
 	python src/deploy/export.py --config configs/quant/export_config.yaml
