@@ -27,7 +27,7 @@ def verify_and_copy_sod(raw_sod_dir, processed_sod_dir):
 
         print(f"\n[+] Processing {split_name.upper()} split...")
         img_out_dir = out_dir / split_name / "images"
-        mask_out_dir = out_dir / split_name / "labels"
+        mask_out_dir = out_dir / split_name / "masks"
         img_out_dir.mkdir(parents=True, exist_ok=True)
         mask_out_dir.mkdir(parents=True, exist_ok=True)
 
