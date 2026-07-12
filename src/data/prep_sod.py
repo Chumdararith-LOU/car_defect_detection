@@ -27,7 +27,7 @@ def verify_and_copy_sod(raw_sod_dir, processed_sod_dir):
 
         print(f"\n[+] Processing {split_name.upper()} split...")
         img_out_dir = out_dir / split_name / "images"
-        mask_out_dir = out_dir / split_name / "masks"
+        mask_out_dir = out_dir / split_name / "labels"
         img_out_dir.mkdir(parents=True, exist_ok=True)
         mask_out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -78,6 +78,7 @@ def verify_and_copy_sod(raw_sod_dir, processed_sod_dir):
         "train": "train/images",
         "val": "val/images",
         "test": "test/images",
+        "masks_dir": "masks",
         "names": {0: "background", 1: "anomaly"},
     }
 
