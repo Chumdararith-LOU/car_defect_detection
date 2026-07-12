@@ -150,7 +150,7 @@
 {% if ns.batches %}
 {% for fig in ns.batches %}
 <figure style="display: inline-block; width: 32%; margin: 3px; text-align: center;">
-  <img src="../figures/{{ run_name }}/{{ fig }}" style="width: 100%;">
+  <img src="figures/{{ run_name }}/{{ fig }}" style="width: 100%;">
   <figcaption><em>{{ fig | replace('.jpg', '') | replace('_', ' ') | title }}</em></figcaption>
 </figure>
 {% endfor %}
