@@ -5,14 +5,14 @@ services:
     image: python:3.10-slim
     container_name: mlflow_lifecycle_server
     volumes:
-      - /home/lamacpp/secure_workspace/car_defect_detection:/home/lamacpp/secure_workspace/car_defect_detection
-    working_dir: /home/lamacpp/secure_workspace/car_defect_detection
+      - /home/rith/secure_workspace/car_defect_detection:/home/rith/secure_workspace/car_defect_detection
+    working_dir: /home/rith/secure_workspace/car_defect_detection
     ports:
       - "5001:5000"
     environment:
       - MLFLOW_TRACKING_URI=http://0.0.0.0:5000
-      - MLFLOW_ARTIFACT_URI=/home/lamacpp/secure_workspace/car_defect_detection/mlruns
-    command: bash -c "apt-get update && apt-get install -y gcc libsqlite3-dev && pip install mlflow pysqlite3 && mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root /home/lamacpp/secure_workspace/car_defect_detection/mlruns --serve-artifacts --host 0.0.0.0 --port 5000 --allowed-hosts '*' --cors-allowed-origins '*'"
+      - MLFLOW_ARTIFACT_URI=/home/rith/secure_workspace/car_defect_detection/mlruns
+    command: bash -c "apt-get update && apt-get install -y gcc libsqlite3-dev && pip install mlflow pysqlite3 && mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root /home/rith/secure_workspace/car_defect_detection/mlruns --serve-artifacts --host 0.0.0.0 --port 5000 --allowed-hosts '*' --cors-allowed-origins '*'"
     restart: unless-stopped
 
   minio:
