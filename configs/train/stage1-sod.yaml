@@ -4,7 +4,7 @@ dataset:
 
 # Neural Network Configurations
 training:
-  backbone: "yolo26n-sem.pt"              # Pure Semantic Segmentation variant (STAL enabled)
+  backbone: "yolo26m-sem.pt"              # Pure Semantic Segmentation variant (STAL enabled)
   epochs: 50
   batch_size: 16                        # Reduced from 32 to prevent RTX 4090 OOM at 640 imgsz
   lr0: 0.001
