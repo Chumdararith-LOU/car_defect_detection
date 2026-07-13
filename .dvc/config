@@ -7,6 +7,6 @@
     secret_access_key = secure_vault_password_2026
 ['remote "minio_vault"']
     url = s3://car-defect-data
-    endpointurl = http://100.97.206.126:9000
+    endpointurl = http://100.85.216.32:9000
     access_key_id = root
     secret_access_key = secure_vault_password_2026
