@@ -44,3 +44,5 @@ logs/
 
 minio_data/
 mlflow.db
+
+runs/
