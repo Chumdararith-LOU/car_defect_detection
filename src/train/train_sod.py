@@ -90,10 +90,16 @@ def run_sod_training():
     os.environ["MLFLOW_TRACKING_URI"] = "http://127.0.0.1:5001"
     os.environ["MLFLOW_ENABLE_SYSTEM_METRICS_LOGGING"] = "true"
     mlflow.set_tracking_uri("http://127.0.0.1:5001")
-    mlflow.set_experiment("Automated_Car_Defect_Stage1_SOD")
+
+    logging_params = train_cfg.get("logging", {})
+    experiment_name = logging_params.get(
+        "experiment_name", "Automated_Car_Defect_Stage1_SOD"
+    )
+    run_name = logging_params.get("run_name", f"Run_SOD_{Path(args.train_config).stem}")
+
+    mlflow.set_experiment(experiment_name)
     settings.update({"mlflow": True, "tensorboard": True})
     os.environ["MLFLOW_KEEP_RUN_ACTIVE"] = "True"
-    run_name = f"Run_SOD_{Path(args.train_config).stem}"
 
     with mlflow.start_run(run_name=run_name) as run:
         print(f"[ℹ] MLflow Run Initialized for Stage 1 SOD. Run ID: {run.info.run_id}")

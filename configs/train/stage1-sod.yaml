@@ -1,6 +1,10 @@
 dataset:
   processed_dir: "data/processed/sod"
-  imgsz: 640                              # Increased for coarse tiling (Action B) to preserve tiny defects
+  imgsz: 640
+
+logging:
+  experiment_name: "Automated_Car_Defect_Stage1_SOD"
+  run_name: "Run_SOD_Tiled_HighRes_v2"                       # Increased for coarse tiling (Action B) to preserve tiny defects
 
 # Neural Network Configurations
 training:
