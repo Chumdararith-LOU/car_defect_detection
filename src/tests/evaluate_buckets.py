@@ -4,42 +4,56 @@ from pathlib import Path
 from ultralytics import YOLO
 
 
-def evaluate_size_buckets(model_path, val_img_dir, val_mask_dir, threshold=0.70):
+def evaluate_size_buckets(model_path, val_img_dir, val_mask_dir):
     print("[+] Loading model and scanning validation set...")
     model = YOLO(model_path, task="semantic")
 
     img_paths = sorted(list(Path(val_img_dir).glob("*.jpg")))
-    mask_paths = sorted(list(Path(val_mask_dir).glob("*.png")))
-
     results = []
 
-    for img_p, mask_p in zip(img_paths, mask_paths):
+    for img_p in img_paths:
+        # 1. Safely match exact filenames (Prevents zip mismatch)
+        mask_p = Path(val_mask_dir) / f"{img_p.stem}.png"
+        if not mask_p.exists():
+            continue
+
         # Load Ground Truth
         gt_mask = cv2.imread(str(mask_p), cv2.IMREAD_GRAYSCALE)
+        if gt_mask is None:
+            continue
         gt_bin = (gt_mask > 0).astype(np.uint8)
         gt_pixels = np.sum(gt_bin)
 
         if gt_pixels == 0:
             continue
 
-        preds = model.predict(str(img_p), imgsz=320, verbose=False)
+        # 2. Drop confidence to 0.01 to catch "ghost" signals
+        preds = model.predict(str(img_p), imgsz=320, conf=0.01, verbose=False)
 
         if preds[0].masks is None:
             recall = 0.0
         else:
-            raw_probs = preds[0].masks.data[0].cpu().numpy()
-            pred_bin = (raw_probs >= threshold).astype(np.uint8)
+            # 3. Combine ALL detected masks into one flat array
+            masks_array = preds[0].masks.data.cpu().numpy()  # Shape: (N, H, W)
+            pred_bin = np.max(masks_array, axis=0)  # Collapse to (H, W)
+            pred_bin = (pred_bin > 0).astype(np.uint8)
 
+            # Resize prediction back to original canvas size
             pred_bin_resized = cv2.resize(
                 pred_bin,
                 (gt_mask.shape[1], gt_mask.shape[0]),
                 interpolation=cv2.INTER_NEAREST,
             )
 
+            # Calculate Recall
             true_positives = np.sum(np.logical_and(pred_bin_resized == 1, gt_bin == 1))
             recall = true_positives / gt_pixels
 
         results.append({"file": img_p.name, "gt_size": gt_pixels, "recall": recall})
+
+    if not results:
+        print("[!] No valid matching image/mask pairs found.")
+        return
 
     results.sort(key=lambda x: x["gt_size"])
 
@@ -48,7 +62,7 @@ def evaluate_size_buckets(model_path, val_img_dir, val_mask_dir, threshold=0.70)
     top_90 = results[bottom_10_idx:]
 
     print("\n" + "=" * 60)
-    print(" 📊 SIZE-BUCKETED RECALL EVALUATION")
+    print(" 📊 SIZE-BUCKETED RECALL EVALUATION (BASELINE)")
     print("=" * 60)
 
     b10_recall = np.mean([x["recall"] for x in bottom_10]) * 100
