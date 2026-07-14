@@ -1,6 +1,6 @@
 dataset:
   processed_dir: "data/processed/sod"
-  imgsz: 512                              # Increased for coarse tiling (Action B) to preserve tiny defects
+  imgsz: 640                              # Increased for coarse tiling (Action B) to preserve tiny defects
 
 # Neural Network Configurations
 training:
