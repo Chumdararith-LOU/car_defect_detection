@@ -79,7 +79,9 @@ def run_sod_training():
         "--train_config", type=str, default="configs/train/stage1-sod.yaml"
     )
     parser.add_argument(
-        "--data_config", type=str, default="data/processed/sod/sod_data.yaml"
+        "--data_config",
+        type=str,
+        default="data/processed/sod_tiled/sod_data_tiled.yaml",
     )
     args = parser.parse_args()
 
@@ -105,10 +107,10 @@ def run_sod_training():
         mlflow.log_params(
             {
                 "config_blueprint": args.train_config,
-                "model_backbone": training_params.get("backbone", "yolo26n-sem.pt"),
+                "model_backbone": training_params.get("backbone", "yolo26m-sem.pt"),
                 "epochs": training_params.get("epochs", 50),
-                "batch_size": training_params.get("batch_size", 16),
-                "input_img_size": train_cfg.get("dataset", {}).get("imgsz", 1024),
+                "batch_size": training_params.get("batch_size", 32),
+                "input_img_size": train_cfg.get("dataset", {}).get("imgsz", 512),
                 "pixel_thresh": train_cfg.get("gating_thresholds", {}).get(
                     "pixel_thresh"
                 ),
@@ -134,6 +136,8 @@ def run_sod_training():
                 imgsz=train_cfg.get("dataset", {}).get("imgsz", 256),
                 lr0=training_params.get("lr0", 0.001),
                 weight_decay=training_params.get("weight_decay", 0.0005),
+                mosaic=0.0,
+                mixup=0.0,
                 project="artifacts/models",
                 name="stage1_sod",
                 exist_ok=True,

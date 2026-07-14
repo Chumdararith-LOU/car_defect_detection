@@ -1,12 +1,12 @@
 dataset:
   processed_dir: "data/processed/sod"
-  imgsz: 640                              # Increased for coarse tiling (Action B) to preserve tiny defects
+  imgsz: 512                              # Increased for coarse tiling (Action B) to preserve tiny defects
 
 # Neural Network Configurations
 training:
   backbone: "yolo26m-sem.pt"              # Pure Semantic Segmentation variant (STAL enabled)
   epochs: 50
-  batch_size: 16                        # Reduced from 32 to prevent RTX 4090 OOM at 640 imgsz
+  batch_size: 32                        # Reduced from 32 to prevent RTX 4090 OOM at 640 imgsz
   lr0: 0.001
   weight_decay: 0.0005
 
