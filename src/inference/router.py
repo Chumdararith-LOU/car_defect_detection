@@ -1,88 +1,105 @@
 import cv2
 import numpy as np
-from pathlib import Path
+import torch
+from ultralytics import YOLO
 
 
-class Stage1GatingRouter:
+class RawStage1Router:
     """
-    The decision gating routing engine running downstream inference gates.
-    Now equipped with Near-Miss logging to catch threshold miscalibrations.
+    A high-fidelity Stage 1 Router that bypasses YOLO's post-processing API
+    to preserve continuous low-confidence signals (Option A) and apply
+    spatial connected-component filters (Option C).
     """
 
-    def __init__(
-        self,
-        pixel_thresh=0.70,
-        anomaly_thresh=0.0005,
-        near_miss_margin=0.20,
-        log_dir="artifacts/near_misses",
-    ):
+    def __init__(self, model_path, pixel_thresh=0.30, min_cc_area=25):
+        print(f"[+] Initializing Raw Router with model: {model_path}")
+        self.yolo_model = YOLO(model_path, task="semantic")
+        self.net = self.yolo_model.model
+        self.net.eval()
+        self.device = next(self.net.parameters()).device
+
         self.pixel_thresh = pixel_thresh
-        self.anomaly_thresh = anomaly_thresh
-        self.near_miss_margin = near_miss_margin
+        self.min_cc_area = min_cc_area
 
-        # Setup logging directory for borderline cases
-        self.log_dir = Path(log_dir)
-        self.log_dir.mkdir(parents=True, exist_ok=True)
+    def predict_and_filter(self, img_path, imgsz=512):
+        # 1. Manual Pre-processing
+        img = cv2.imread(str(img_path))
+        if img is None:
+            raise FileNotFoundError(f"Could not read image at {img_path}")
 
-    def route_frame(self, frame_id, original_image, predicted_saliency_map):
-        """
-        Determines if the frame requires Stage 2 processing and logs borderline cases.
+        h_orig, w_orig = img.shape[:2]
+        img_resized = cv2.resize(img, (imgsz, imgsz))
 
-        Args:
-            frame_id (str): Unique identifier for the image (e.g., "004000").
-            original_image (np.ndarray): The raw BGR image for saving if flagged.
-            predicted_saliency_map (np.ndarray): 2D array [H, W] of float predictions in [0, 1].
-        """
-        h, w = predicted_saliency_map.shape
-        total_pixels = h * w
+        # BGR -> RGB, HWC -> CHW, Normalize
+        img_tensor = (
+            torch.from_numpy(img_resized[:, :, ::-1].copy()).permute(2, 0, 1).float()
+            / 255.0
+        )
+        img_tensor = img_tensor.unsqueeze(0).to(self.device)
 
-        # Threshold pixel activations
-        active_pixels = np.sum(predicted_saliency_map >= self.pixel_thresh)
+        # 2. Raw Forward Pass
+        with torch.no_grad():
+            raw_output = self.net(img_tensor)
 
-        # Calculate global saliency score
-        saliency_score = active_pixels / total_pixels
+        logits = raw_output[0] if isinstance(raw_output, tuple) else raw_output
+        probs = torch.sigmoid(logits)
 
-        # 1. Active Route Decision
-        trigger_stage2 = saliency_score >= self.anomaly_thresh
-        routing_state = "ACTIVE_ROUTE" if trigger_stage2 else "PASS_ROUTE"
+        # Extract target defect class channel (Channel 1)
+        target_channel = 1 if logits.shape[1] > 1 else 0
+        raw_probs_map = probs[0, target_channel, :, :].cpu().numpy()
 
-        # 2. Near-Miss Logging Logic
-        near_miss = False
-        if not trigger_stage2:
-            lower_bound = self.anomaly_thresh * (1.0 - self.near_miss_margin)
-            if lower_bound <= saliency_score < self.anomaly_thresh:
-                near_miss = True
-                # Log the pristine-but-suspicious image for manual human review
-                save_path = (
-                    self.log_dir / f"near_miss_{saliency_score:.6f}_{frame_id}.jpg"
-                )
-                cv2.imwrite(str(save_path), original_image)
-                print(f"[!] Near-Miss Logged: {frame_id} (Score: {saliency_score:.6f})")
+        # 3. Scale probability map back to original size
+        probs_resized = cv2.resize(
+            raw_probs_map, (w_orig, h_orig), interpolation=cv2.INTER_LINEAR
+        )
 
-        return {
-            "saliency_score": float(saliency_score),
-            "routing_state": routing_state,
-            "trigger_stage2": bool(trigger_stage2),
-            "is_near_miss": near_miss,
-        }
+        # 4. Apply lower pixel threshold (Option A)
+        pred_bin = (probs_resized >= self.pixel_thresh).astype(np.uint8)
+
+        # 5. Apply Connected-Component Size Filter (Option C)
+        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
+            pred_bin, connectivity=8
+        )
+
+        filtered_mask = np.zeros_like(pred_bin)
+        for i in range(1, num_labels):
+            area = stats[i, cv2.CC_STAT_AREA]
+            if area >= self.min_cc_area:
+                filtered_mask[labels == i] = 1
+
+        return img, probs_resized, filtered_mask
 
 
-# Execution test block
 if __name__ == "__main__":
-    # Simulate an image and a saliency map
-    mock_image = np.zeros((1024, 1024, 3), dtype=np.uint8)
-    mock_saliency = np.zeros((1024, 1024), dtype=np.float32)
+    # Test execution using your newly trained best weights
+    model_weight = "mlruns/1/ba4046a349434a88a5dcade830554f65/artifacts/weights/best.pt"
+    test_image = "data/processed/sod/val/images/000552.jpg"
 
-    # Simulate a score of 0.00045 (which is 90% of the 0.00050 threshold)
-    active_pixel_count = int(1024 * 1024 * 0.00045)
-    mock_saliency.flat[:active_pixel_count] = 0.95
-
-    router = Stage1GatingRouter(
-        pixel_thresh=0.70, anomaly_thresh=0.0005, near_miss_margin=0.20
+    router = RawStage1Router(
+        model_path=model_weight,
+        pixel_thresh=0.28,  # Set just below our peak logit probability of 0.322
+        min_cc_area=20,  # Filter out noise spots smaller than 20 pixels
     )
-    decision = router.route_frame("test_frame", mock_image, mock_saliency)
 
-    print(f"Saliency Score: {decision['saliency_score']:.6f}")
-    print(f"Routing Decision: {decision['routing_state']}")
-    print(f"Was this a near-miss? {decision['is_near_miss']}")
-    # Expected output: PASS_ROUTE (because 0.00045 < 0.00050), but is_near_miss = True
+    try:
+        orig_img, probs, mask = router.predict_and_filter(test_image)
+
+        # Generate green mask overlay
+        overlay = orig_img.copy()
+        overlay[mask == 1] = [0, 255, 0]  # Draw green mask overlay
+        visualized = cv2.addWeighted(orig_img, 0.7, overlay, 0.3, 0)
+
+        # Save side-by-side comparison (Original vs Green Mask Overlay)
+        comparison = np.hstack((orig_img, visualized))
+        output_path = "test_raw_router_result.jpg"
+        cv2.imwrite(output_path, comparison)
+
+        print("\n=========================================================")
+        print(f"[✓] TEST COMPLETE: Visual results saved to {output_path}")
+        print("=========================================================")
+        print("Open this file. You should see a green mask drawn")
+        print("exactly over the scratch that was previously missed!")
+        print("=========================================================\n")
+
+    except Exception as e:
+        print(f"[!] Test failed: {e}")
