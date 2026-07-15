@@ -121,7 +121,6 @@ class RawStage1Router:
                 # Retain the entire continuous component, recovering the weak tail pixels
                 gated_mask[component_pixels] = 1
 
-        # Pass 4: Apply minimum continuous area filter to reject fine speckles
         num_labels_filtered, labels_filtered, stats_filtered, _ = (
             cv2.connectedComponentsWithStats(gated_mask, connectivity=8)
         )
@@ -129,8 +128,16 @@ class RawStage1Router:
 
         for i in range(1, num_labels_filtered):
             area = stats_filtered[i, cv2.CC_STAT_AREA]
-            if area >= self.min_cc_area:
-                final_mask[labels_filtered == i] = 1
+            if area < self.min_cc_area:
+                continue
+
+            x, y, w, h_box, area = stats_filtered[i]
+            aspect_ratio = float(h_box) / w if w > 0 else 0
+
+            if aspect_ratio < 2.0:
+                continue
+
+            final_mask[labels_filtered == i] = 1
 
         return final_mask
 

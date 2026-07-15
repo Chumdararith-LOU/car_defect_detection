@@ -21,15 +21,15 @@ def get_tile_coords(h, w, overlap_frac=0.15):
 
 
 def extract_tiled_confidence_profile(
-    model_path, img_path, mask_path, imgsz=512, overlap_frac=0.15
+    model_path, img_path, mask_path, imgsz=640, overlap_frac=0.15
 ):
-    print("[+] Loading model and initializing raw-logits bypass...")
+    print(f"[+] Loading model and initializing raw-logits bypass at {imgsz}x{imgsz}...")
     model = YOLO(model_path, task="semantic")
     net = model.model
     net.eval()
     device = next(net.parameters()).device
 
-    # 1. Load Ground Truth Mask to locate the crack coordinates
+    # 1. Load Ground Truth Mask
     gt_mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
     if gt_mask is None:
         raise FileNotFoundError(f"Could not load mask at {mask_path}")
@@ -43,25 +43,27 @@ def extract_tiled_confidence_profile(
     y_sorted = y_coords[sorted_indices]
     x_sorted = x_coords[sorted_indices]
 
-    # 2. Load the original full-resolution image
+    # 2. Load the original image
     img = cv2.imread(str(img_path))
     if img is None:
         raise FileNotFoundError(f"Could not load image at {img_path}")
     h_orig, w_orig = img.shape[:2]
 
-    # Initialize our global canvas for stitched probabilities
+    # Initialize global canvas and single-tile canvases (to track unstitched probabilities)
     global_probs = np.zeros((h_orig, w_orig), dtype=np.float32)
+    tile_canvases = [
+        np.full((h_orig, w_orig), -1.0, dtype=np.float32) for _ in range(4)
+    ]
 
-    # 3. Slice, Infer on Tiles, and Stitch
+    # 3. Slice, Infer on Tiles, and Deconstruct
     tile_bounds = get_tile_coords(h_orig, w_orig, overlap_frac)
-    print(f"[+] Slicing image into 4 quadrants with {overlap_frac*100:.1f}% overlap...")
+    print(f"[+] Slicing image with {overlap_frac*100:.1f}% overlap...")
 
     for idx, ((y0, y1), (x0, x1)) in enumerate(tile_bounds):
-        # Extract the overlapping quadrant crop
         tile_crop = img[y0:y1, x0:x1]
         t_h, t_w = tile_crop.shape[:2]
 
-        # Preprocess tile to the model's training size (512x512)
+        # Preprocess tile to production size (640x640)
         tile_resized = cv2.resize(tile_crop, (imgsz, imgsz))
         img_tensor = (
             torch.from_numpy(tile_resized[:, :, ::-1].copy()).permute(2, 0, 1).float()
@@ -76,66 +78,101 @@ def extract_tiled_confidence_profile(
         logits = raw_output[0] if isinstance(raw_output, tuple) else raw_output
         probs = torch.sigmoid(logits)
 
-        # Extract defect channel probability map
+        # Extract defect class probability map
         target_channel = 1 if logits.shape[1] > 1 else 0
         raw_probs_map = probs[0, target_channel, :, :].cpu().numpy()
 
-        # Scale the tile's probability map back to its unresized cropped tile shape
+        # Scale probabilities back to original unresized tile shape
         tile_probs_resized = cv2.resize(
             raw_probs_map, (t_w, t_h), interpolation=cv2.INTER_LINEAR
         )
 
-        # Stitch back into global canvas resolving overlaps with maximum pooling
+        # Store in individual tile canvas to analyze unstitched signal
+        tile_canvases[idx][y0:y1, x0:x1] = tile_probs_resized
+
+        # Stitch into global canvas using max pooling
         global_probs[y0:y1, x0:x1] = np.maximum(
             global_probs[y0:y1, x0:x1], tile_probs_resized
         )
-        print(
-            f"    [✓] Processed Tile {idx} (Shape: {t_w}x{t_h}) -> "
-            f"Logit range: {tile_probs_resized.min():.4f} to "
-            f"{tile_probs_resized.max():.4f}"
-        )
 
-    # 4. Extract confidence values along the sorted crack path from stitched canvas
+    # 4. Extract and analyze confidence along the sorted crack path
     unique_ys = np.unique(y_sorted)
     profile_data = []
 
     for y in unique_ys:
         xs_at_y = x_sorted[y_sorted == y]
-        max_prob = np.max([global_probs[y, x] for x in xs_at_y])
-        profile_data.append((y, max_prob))
+        max_idx = np.argmax([global_probs[y, x] for x in xs_at_y])
+        target_x = xs_at_y[max_idx]
 
-    # 5. Output Results & Print ASCII Plot
-    print("\n" + "=" * 60)
-    print(" 📈 TILED-CORRECT 1D CRACK CONFIDENCE PROFILE")
-    print("=" * 60)
+        # Grab stitched and individual tile values for this pixel
+        stitched_val = global_probs[y, target_x]
+        t0_val = tile_canvases[0][y, target_x]
+        t2_val = tile_canvases[2][y, target_x]
+
+        profile_data.append(
+            {"y": y, "stitched": stitched_val, "t0": t0_val, "t2": t2_val}
+        )
+
+    # 5. Output Results & Print ASCII Plot with Side-by-Side Tile Isolation
+    print("\n" + "=" * 85)
+    print(" 📈 TILED-CORRECT 1D CONFIDENCE PROFILE (PRODUCTION RESOLUTION: 640x640)")
+    print("=" * 85)
     print(f"Crack Span: Y={unique_ys.min()} (Top) to Y={unique_ys.max()} (Bottom)")
-    print("=" * 60)
+    print("=" * 85)
 
     # Downsample profile to ~30 rows for terminal scannability
     step_size = max(1, len(profile_data) // 30)
     downsampled_profile = profile_data[::step_size]
 
-    for y, prob in downsampled_profile:
-        bar_length = int(prob * 50)
-        bar = "█" * bar_length + "░" * (50 - bar_length)
-        print(f"Y={y:03d} | [{bar}] {prob:.3f}")
+    for row in downsampled_profile:
+        y, prob = row["y"], row["stitched"]
+        bar_length = int(prob * 40)
+        bar = "█" * bar_length + "░" * (40 - bar_length)
 
-    print("=" * 60)
+        # Format unstitched tiles for comparison
+        t0_str = f"{row['t0']:.3f}" if row["t0"] >= 0 else "  -  "
+        t2_str = f"{row['t2']:.3f}" if row["t2"] >= 0 else "  -  "
 
-    avg_conf = np.mean([p[1] for p in profile_data])
-    top_third_conf = np.mean([p[1] for p in profile_data[: len(profile_data) // 3]])
-    bottom_third_conf = np.mean([p[1] for p in profile_data[-len(profile_data) // 3 :]])
+        print(
+            f"Y={y:03d} | [{bar}] Stitched: {prob:.3f} | Tile 0 (TL): {t0_str} | Tile 2 (BL): {t2_str}"
+        )
 
-    print(f"Stitched Average Confidence: {avg_conf:.3f}")
-    print(f"Stitched Top-Third (Tip) Average: {top_third_conf:.3f}")
-    print(f"Stitched Bottom-Third (Base) Average: {bottom_third_conf:.3f}")
-    print("=" * 60 + "\n")
+    print("=" * 85)
 
-    # Save a visual tiled heatmap output for validation
-    heatmap_pixels = (global_probs * 255).astype(np.uint8)
-    heatmap_colored = cv2.applyColorMap(heatmap_pixels, cv2.COLORMAP_JET)
-    cv2.imwrite("tiled_stitched_xray_000552.jpg", heatmap_colored)
-    print("[✓] Stitched visual heatmap saved to tiled_stitched_xray_000552.jpg")
+    # Bottom-third isolation check (Y=309 to Y=379)
+    bottom_third_rows = [r for r in profile_data if 309 <= r["y"] <= 379]
+    avg_stitched = np.mean([r["stitched"] for r in bottom_third_rows])
+
+    # Filter out out-of-bounds tiles (-1.0 values) for averages
+    t0_vals = [r["t0"] for r in bottom_third_rows if r["t0"] >= 0]
+    t2_vals = [r["t2"] for r in bottom_third_rows if r["t2"] >= 0]
+
+    avg_t0 = np.mean(t0_vals) if t0_vals else 0.0
+    avg_t2 = np.mean(t2_vals) if t2_vals else 0.0
+
+    print(" 🔍 BOTTOM-THIRD ISOLATION METRICS (Y=309 to Y=379):")
+    print("-" * 85)
+    print(f"  Stitched Region Average:          {avg_stitched:.3f}")
+    print(f"  Tile 0 (Top-Left) Raw Average:    {avg_t0:.3f}")
+    print(f"  Tile 2 (Bottom-Left) Raw Average: {avg_t2:.3f}")
+    print("-" * 85)
+
+    if avg_t2 > 0.15 and abs(avg_t2 - avg_stitched) < 0.03:
+        print(
+            "[✓] VERDICT: Hypothesis C confirmed! "
+            "Tile 2 holds a genuine, healthy unstitched signal."
+        )
+    elif avg_t0 > avg_t2 + 0.10:
+        print(
+            "[!] VERDICT: Stitching artifact detected! "
+            "Tile 0 border effects are artificially inflating the stitched signal."
+        )
+    else:
+        print(
+            "[ℹ] VERDICT: Mixed signals. "
+            "Analyze individual tile averages to evaluate localized loss."
+        )
+    print("=" * 85 + "\n")
 
 
 if __name__ == "__main__":
