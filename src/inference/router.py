@@ -152,9 +152,11 @@ class RawStage1Router:
                 continue
 
             x, y, w, h_box, area = stats_filtered[i]
-            aspect_ratio = float(h_box) / w if w > 0 else 0
+            aspect_ratio = (
+                max(float(h_box) / w, float(w) / h_box) if (w > 0 and h_box > 0) else 0
+            )
 
-            if aspect_ratio < 2.0:
+            if aspect_ratio < 1.5:
                 continue
 
             final_mask[labels_filtered == i] = 1
