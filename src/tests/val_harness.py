@@ -59,10 +59,25 @@ def run_validation_harness():
 
     clean_files = [
         "data/processed/sod_tiled/images/val/000105_t0.png",
+        "data/processed/sod_tiled/images/val/000157_t0.png",
+        "data/processed/sod_tiled/images/val/000157_t2.png",
+        "data/processed/sod_tiled/images/val/000552_t1.png",
+        "data/processed/sod_tiled/images/val/000552_t3.png",
         "data/processed/sod_tiled/images/val/000707_t0.png",
         "data/processed/sod_tiled/images/val/000707_t2.png",
         "data/processed/sod_tiled/images/val/000784_t0.png",
         "data/processed/sod_tiled/images/val/000784_t2.png",
+        "data/processed/sod_tiled/images/val/000832_t0.png",
+        "data/processed/sod_tiled/images/val/000832_t2.png",
+        "data/processed/sod_tiled/images/val/001848_t1.png",
+        "data/processed/sod_tiled/images/val/001848_t3.png",
+        "data/processed/sod_tiled/images/val/002086_t0.png",
+        "data/processed/sod_tiled/images/val/002086_t1.png",
+        "data/processed/sod_tiled/images/val/002126_t1.png",
+        "data/processed/sod_tiled/images/val/002126_t3.png",
+        "data/processed/sod_tiled/images/val/002176_t1.png",
+        "data/processed/sod_tiled/images/val/002176_t3.png",
+        "data/processed/sod_tiled/images/val/002203_t0.png",
     ]
 
     print("=" * 85)
