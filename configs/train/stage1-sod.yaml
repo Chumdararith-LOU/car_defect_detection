@@ -4,7 +4,7 @@ dataset:
 
 logging:
   experiment_name: "Automated_Car_Defect_Stage1_SOD"
-  run_name: "Stage1_SOD_FocalLoss_Full_medium_version"
+  run_name: "Stage1_SOD_FocalLoss_Full_nano_version"
 
 # Neural Network Configurations
 training:
