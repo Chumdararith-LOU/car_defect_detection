@@ -4,11 +4,11 @@ dataset:
 
 logging:
   experiment_name: "Automated_Car_Defect_Stage1_SOD"
-  run_name: "Stage1_SOD_FocalLoss_Full"
+  run_name: "Stage1_SOD_FocalLoss_Full_nano_version"
 
 # Neural Network Configurations
 training:
-  backbone: "yolo26m-sem.pt"
+  backbone: "yolo26n-sem.pt"
   epochs: 50
   batch_size: 32
   lr0: 0.001

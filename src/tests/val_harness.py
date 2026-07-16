@@ -7,9 +7,10 @@ def run_validation_harness():
 
     router = RawStage1Router(
         model_path=model_weight,
-        pixel_thresh_high=0.85,
-        pixel_thresh_low=0.40,
+        pixel_thresh_high=0.47,
+        pixel_thresh_low=0.35,
         min_cc_area=20,
+        max_cc_area_reject=5000,
     )
 
     # 10 Validation images containing confirmed hairline cracks

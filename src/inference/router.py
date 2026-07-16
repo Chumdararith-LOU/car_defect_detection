@@ -76,9 +76,10 @@ class RawStage1Router:
     def __init__(
         self,
         model_path,
-        pixel_thresh_high=0.28,
-        pixel_thresh_low=0.15,
+        pixel_thresh_high=0.47,
+        pixel_thresh_low=0.35,
         min_cc_area=20,
+        max_cc_area_reject=5000,
         overlap_frac=0.15,
     ):
         print(f"[+] Initializing Raw Stage 1 Router with model: {model_path}")
@@ -87,11 +88,10 @@ class RawStage1Router:
         self.net.eval()
         self.device = next(self.net.parameters()).device
 
-        self.pixel_thresh_high = pixel_thresh_high  # The strong seed threshold (anchor)
-        self.pixel_thresh_low = (
-            pixel_thresh_low  # The weak connectivity threshold (pathway)
-        )
-        self.min_cc_area = min_cc_area  # Component size rejection filter
+        self.pixel_thresh_high = pixel_thresh_high
+        self.pixel_thresh_low = pixel_thresh_low
+        self.min_cc_area = min_cc_area
+        self.max_cc_area_reject = max_cc_area_reject
         self.overlap_frac = overlap_frac
 
     def get_tile_coords(self, h, w):
@@ -132,13 +132,11 @@ class RawStage1Router:
 
         gated_mask = np.zeros_like(mask_low)
 
-        for i in range(1, num_labels):  # Index 0 is background
-            # Segment component and compute overlap with high-confidence seed mask
+        for i in range(1, num_labels):
             component_pixels = labels == i
             has_seed = np.any(mask_high[component_pixels] > 0)
 
             if has_seed:
-                # Retain the entire continuous component, recovering the weak tail pixels
                 gated_mask[component_pixels] = 1
 
         num_labels_filtered, labels_filtered, stats_filtered, _ = (
@@ -148,10 +146,14 @@ class RawStage1Router:
 
         for i in range(1, num_labels_filtered):
             area = stats_filtered[i, cv2.CC_STAT_AREA]
+
             if area < self.min_cc_area:
                 continue
 
-            x, y, w, h_box, area = stats_filtered[i]
+            if area > self.max_cc_area_reject:
+                continue
+
+            x, y, w, h_box, _ = stats_filtered[i]
 
             if area <= 120:
                 aspect_ratio = (
