@@ -7,8 +7,8 @@ def run_validation_harness():
 
     router = RawStage1Router(
         model_path=model_weight,
-        pixel_thresh_high=0.28,
-        pixel_thresh_low=0.18,
+        pixel_thresh_high=0.85,
+        pixel_thresh_low=0.40,
         min_cc_area=20,
     )
 
