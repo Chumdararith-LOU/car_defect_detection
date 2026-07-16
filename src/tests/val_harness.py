@@ -1,8 +1,8 @@
 import cv2
 import numpy as np
-import torch
 from pathlib import Path
 from ultralytics import YOLO
+from src.inference.router import get_stitched_probability_map
 
 
 class RawStage1Router:
@@ -41,40 +41,14 @@ class RawStage1Router:
             print(f"  [!] Skipped corrupted/missing image: {img_path}")
             return False
 
-        h_orig, w_orig = img.shape[:2]
-        global_probs = np.zeros((h_orig, w_orig), dtype=np.float32)
-        tile_bounds = self.get_tile_coords(h_orig, w_orig)
+        global_probs = get_stitched_probability_map(
+            img=img,
+            net=self.net,
+            device=self.device,
+            overlap_frac=self.overlap_frac,
+            imgsz=imgsz,
+        )
 
-        for (y0, y1), (x0, x1) in tile_bounds:
-            tile_crop = img[y0:y1, x0:x1]
-            t_h, t_w = tile_crop.shape[:2]
-            tile_resized = cv2.resize(tile_crop, (imgsz, imgsz))
-            img_tensor = (
-                torch.from_numpy(tile_resized[:, :, ::-1].copy())
-                .permute(2, 0, 1)
-                .float()
-                / 255.0
-            )
-            img_tensor = img_tensor.unsqueeze(0).to(self.device)
-
-            with torch.no_grad():
-                raw_output = self.net(img_tensor)
-            logits = raw_output[0] if isinstance(raw_output, tuple) else raw_output
-
-            if logits.shape[1] == 1:
-                probs = torch.sigmoid(logits)
-                raw_probs_map = probs[0, 0, :, :].cpu().numpy()
-            else:
-                probs = torch.softmax(logits, dim=1)
-                raw_probs_map = probs[0, 1, :, :].cpu().numpy()
-            tile_probs_resized = cv2.resize(
-                raw_probs_map, (t_w, t_h), interpolation=cv2.INTER_LINEAR
-            )
-            global_probs[y0:y1, x0:x1] = np.maximum(
-                global_probs[y0:y1, x0:x1], tile_probs_resized
-            )
-
-        # Apply Hysteresis Gating (with no erosion, as validated by Step 1)
         mask_high = (global_probs >= self.pixel_thresh_high).astype(np.uint8)
         mask_low = (global_probs >= self.pixel_thresh_low).astype(np.uint8)
 
