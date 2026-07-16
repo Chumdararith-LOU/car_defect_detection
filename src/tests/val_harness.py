@@ -11,8 +11,8 @@ class RawStage1Router:
     def __init__(
         self,
         model_path,
-        pixel_thresh_high=0.28,
-        pixel_thresh_low=0.18,
+        pixel_thresh_high=0.85,
+        pixel_thresh_low=0.40,
         min_cc_area=20,
         overlap_frac=0.15,
     ):

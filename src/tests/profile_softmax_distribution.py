@@ -6,7 +6,7 @@ from src.inference.router import get_stitched_probability_map
 
 
 def run_softmax_profiling():
-    model_weight = "mlruns/1/ba4046a349434a88a5dcade830554f65/artifacts/weights/best.pt"
+    model_weight = "runs/semantic/runs/semantic/Automated_Car_Defect_Stage1_SOD/Stage1_SOD_FocalLoss_Full/weights/best.pt"
 
     print("[+] Loading retrained Stage 1 Model...")
     model = YOLO(model_weight, task="semantic")
