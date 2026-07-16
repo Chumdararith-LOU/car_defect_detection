@@ -1,10 +1,10 @@
 dataset:
-  processed_dir: "data/processed/sod"
+  processed_dir: "data/processed/sod_tiled"
   imgsz: 640
 
 logging:
   experiment_name: "Automated_Car_Defect_Stage1_SOD"
-  run_name: "Run_SOD_Tiled_HighRes_v2"
+  run_name: "Stage1_SOD_FocalLoss_Full"
 
 # Neural Network Configurations
 training:
@@ -13,9 +13,13 @@ training:
   batch_size: 32
   lr0: 0.001
   weight_decay: 0.0005
+  loss_function: "FocalCrossEntropyLoss"     # Explicitly document the active Python patch
+  fl_gamma: 2.0
 
 # Industrial Double-Threshold Gating Parameters
 gating_thresholds:
-  pixel_thresh: 0.70                     # Individual pixel activation binarization cut-off (tau_pixel)
+  pixel_thresh_high: 0.28                    # Anchor seed threshold (tau_high)
+  pixel_thresh_low: 0.18                     # Pathway connectivity threshold (tau_low)
+  min_cc_area: 20                            # Morphological size rejection
   anomaly_thresh: 0.0005
-  near_miss_margin: 0.20                 # Log frames within 20% of anomaly_thresh for manual review
+  near_miss_margin: 0.20               # Log frames within 20% of anomaly_thresh for manual review

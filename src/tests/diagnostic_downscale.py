@@ -88,7 +88,7 @@ def diagnostic_downscale_survival_v2(
 if __name__ == "__main__":
     # Point this to your processed masks directory
     # Depending on your current architecture, it might be in 'masks' or 'labels'
-    target_directory = "data/processed/sod/train/masks"
+    target_directory = "data/processed/sod/val/masks"
 
     if Path(target_directory).exists():
         diagnostic_downscale_survival_v2(target_directory)
