@@ -154,7 +154,18 @@ def run_validation_harness():
         "data/processed/sod/val/images/003714.jpg",
     ]
 
-    clean_files = []
+    clean_files = [
+        "data/processed/sod_tiled/images/val/000105_t0.png",
+        "data/processed/sod_tiled/images/val/000157_t0.png",
+        "data/processed/sod_tiled/images/val/000157_t2.png",
+        "data/processed/sod_tiled/images/val/000552_t1.png",
+        "data/processed/sod_tiled/images/val/000552_t3.png",
+        "data/processed/sod_tiled/images/val/000707_t0.png",
+        "data/processed/sod_tiled/images/val/000707_t2.png",
+        "data/processed/sod_tiled/images/val/000784_t0.png",
+        "data/processed/sod_tiled/images/val/000784_t2.png",
+        "data/processed/sod_tiled/images/val/000832_t0.png",
+    ]
 
     print("=" * 85)
     print(" 📊 MULTI-IMAGE STAGE 1 VALIDATION HARNESS (SOFTMAX ACTIVATED)")
