@@ -4,6 +4,63 @@ import torch
 from ultralytics import YOLO
 
 
+def get_stitched_probability_map(img, net, device, overlap_frac=0.15, imgsz=512):
+    """
+    Consolidated mathematical utility for slicing, raw inference,
+    dynamic channel activation (Sigmoid/Softmax), and coordinate stitching.
+    This guarantees identical probability space across training, profiling, and routing.
+    """
+    h_orig, w_orig = img.shape[:2]
+    global_probs = np.zeros((h_orig, w_orig), dtype=np.float32)
+
+    h_mid, w_mid = h_orig // 2, w_orig // 2
+    oh, ow = int(h_orig * overlap_frac), int(w_orig * overlap_frac)
+    tile_bounds = [
+        ((0, min(h_orig, h_mid + oh)), (0, min(w_orig, w_mid + ow))),  # Top-Left
+        ((0, min(h_orig, h_mid + oh)), (max(0, w_mid - ow), w_orig)),  # Top-Right
+        ((max(0, h_mid - oh), h_orig), (0, min(w_orig, w_mid + ow))),  # Bottom-Left
+        ((max(0, h_mid - oh), h_orig), (max(0, w_mid - ow), w_orig)),  # Bottom-Right
+    ]
+
+    for (y0, y1), (x0, x1) in tile_bounds:
+        tile_crop = img[y0:y1, x0:x1]
+        t_h, t_w = tile_crop.shape[:2]
+
+        tile_resized = cv2.resize(tile_crop, (imgsz, imgsz))
+        img_tensor = (
+            (
+                torch.from_numpy(tile_resized[:, :, ::-1].copy())
+                .permute(2, 0, 1)
+                .float()
+                / 255.0
+            )
+            .unsqueeze(0)
+            .to(device)
+        )
+
+        with torch.no_grad():
+            raw_output = net(img_tensor)
+
+        logits = raw_output[0] if isinstance(raw_output, tuple) else raw_output
+
+        if logits.shape[1] == 1:
+            probs = torch.sigmoid(logits)
+            raw_probs_map = probs[0, 0, :, :].cpu().numpy()
+        else:
+            probs = torch.softmax(logits, dim=1)
+            raw_probs_map = probs[0, 1, :, :].cpu().numpy()
+
+        tile_probs_resized = cv2.resize(
+            raw_probs_map, (t_w, t_h), interpolation=cv2.INTER_LINEAR
+        )
+
+        global_probs[y0:y1, x0:x1] = np.maximum(
+            global_probs[y0:y1, x0:x1], tile_probs_resized
+        )
+
+    return global_probs
+
+
 class RawStage1Router:
     """
     A high-fidelity Stage 1 Router that bypasses YOLO's post-processing API.
@@ -51,46 +108,9 @@ class RawStage1Router:
 
     def predict_stitched_probabilities(self, img, imgsz=512):
         """Slices, runs raw-logits inference, and stitches probabilities back to full resolution."""
-        h_orig, w_orig = img.shape[:2]
-        global_probs = np.zeros((h_orig, w_orig), dtype=np.float32)
-        tile_bounds = self.get_tile_coords(h_orig, w_orig)
-
-        for (y0, y1), (x0, x1) in tile_bounds:
-            tile_crop = img[y0:y1, x0:x1]
-            t_h, t_w = tile_crop.shape[:2]
-
-            # Standard pre-processing to match training grid size
-            tile_resized = cv2.resize(tile_crop, (imgsz, imgsz))
-            img_tensor = (
-                torch.from_numpy(tile_resized[:, :, ::-1].copy())
-                .permute(2, 0, 1)
-                .float()
-                / 255.0
-            )
-            img_tensor = img_tensor.unsqueeze(0).to(self.device)
-
-            # Raw forward pass to extract unbinarized network logits
-            with torch.no_grad():
-                raw_output = self.net(img_tensor)
-
-            logits = raw_output[0] if isinstance(raw_output, tuple) else raw_output
-            probs = torch.sigmoid(logits)
-
-            # Target Channel 1 = Defect, Channel 0 = Background
-            target_channel = 1 if logits.shape[1] > 1 else 0
-            raw_probs_map = probs[0, target_channel, :, :].cpu().numpy()
-
-            # Rescale the probability map back to its uncropped physical tile shape
-            tile_probs_resized = cv2.resize(
-                raw_probs_map, (t_w, t_h), interpolation=cv2.INTER_LINEAR
-            )
-
-            # Max-pooling overlapping regions to preserve peak feature boundaries
-            global_probs[y0:y1, x0:x1] = np.maximum(
-                global_probs[y0:y1, x0:x1], tile_probs_resized
-            )
-
-        return global_probs
+        return get_stitched_probability_map(
+            img, self.net, self.device, self.overlap_frac, imgsz
+        )
 
     def run_hysteresis_gate(self, global_probs):
         """
