@@ -1,16 +1,16 @@
 dataset:
   processed_dir: "data/processed/sod_tiled"
-  imgsz: 640
+  imgsz: 1024
 
 logging:
   experiment_name: "Automated_Car_Defect_Stage1_SOD"
-  run_name: "Stage1_SOD_FocalLoss_Full_nano_version"
+  run_name: "Stage1_SOD_FocalLoss_Full_medium_version"
 
 # Neural Network Configurations
 training:
   backbone: "yolo26n-sem.pt"
   epochs: 50
-  batch_size: 32
+  batch_size: 16
   lr0: 0.001
   weight_decay: 0.0005
   loss_function: "FocalCrossEntropyLoss"     # Explicitly document the active Python patch

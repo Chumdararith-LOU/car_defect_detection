@@ -131,14 +131,13 @@ def run_full_focal_training():
         mlflow.set_tag("git_commit", git_hash)
         mlflow.log_artifact(args.train_config, artifact_path="configs")
 
-        # Dynamically log all training params from YAML
         mlflow.log_params(
             {
                 "config_blueprint": args.train_config,
                 "model_backbone": training_params.get("backbone", "yolo26m-sem.pt"),
                 "epochs": training_params.get("epochs", 50),
-                "batch_size": training_params.get("batch_size", 32),
-                "input_img_size": dataset_params.get("imgsz", 640),
+                "batch_size": training_params.get("batch_size", 16),
+                "input_img_size": dataset_params.get("imgsz", 1024),
                 "lr0": training_params.get("lr0", 0.001),
                 "weight_decay": training_params.get("weight_decay", 0.0005),
                 "loss_function": training_params.get(
@@ -159,8 +158,8 @@ def run_full_focal_training():
                 data=args.data_config,
                 task="semantic",
                 epochs=training_params.get("epochs", 50),
-                batch=training_params.get("batch_size", 32),
-                imgsz=dataset_params.get("imgsz", 640),
+                batch=training_params.get("batch_size", 16),
+                imgsz=dataset_params.get("imgsz", 1024),
                 lr0=training_params.get("lr0", 0.001),
                 weight_decay=training_params.get("weight_decay", 0.0005),
                 project="runs/semantic/Automated_Car_Defect_Stage1_SOD",
