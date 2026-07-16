@@ -100,9 +100,11 @@ class RawStage1Router:
 
 
 def run_validation_harness():
-    model_weight = "mlruns/1/ba4046a349434a88a5dcade830554f65/artifacts/weights/best.pt"
+    model_weight = (
+        "runs/semantic/runs/semantic/Automated_Car_Defect_Stage1_SOD/"
+        "Stage1_SOD_FocalLoss_Full/weights/best.pt"
+    )
 
-    # Instantiate the router with our proposed parameters
     router = RawStage1Router(
         model_path=model_weight,
         pixel_thresh_high=0.28,
@@ -156,15 +158,10 @@ def run_validation_harness():
 
     clean_files = [
         "data/processed/sod_tiled/images/val/000105_t0.png",
-        "data/processed/sod_tiled/images/val/000157_t0.png",
-        "data/processed/sod_tiled/images/val/000157_t2.png",
-        "data/processed/sod_tiled/images/val/000552_t1.png",
-        "data/processed/sod_tiled/images/val/000552_t3.png",
         "data/processed/sod_tiled/images/val/000707_t0.png",
         "data/processed/sod_tiled/images/val/000707_t2.png",
         "data/processed/sod_tiled/images/val/000784_t0.png",
         "data/processed/sod_tiled/images/val/000784_t2.png",
-        "data/processed/sod_tiled/images/val/000832_t0.png",
     ]
 
     print("=" * 85)
@@ -181,16 +178,17 @@ def run_validation_harness():
     )
 
     # Evaluate Calibration Set
-    cal_detected = 0
+    cal_tp, cal_evaluated = 0, 0
     print("[+] Evaluating Calibration Images (Check performance on known fits):")
     for f in calibration_files:
         path = Path(f)
         if not path.exists():
             print(f"  [!] Skipping missing file: {f}")
             continue
+        cal_evaluated += 1
         detected = router.route_image(path)
         if detected:
-            cal_detected += 1
+            cal_tp += 1
             print(f"  [✓] {path.name}: Defect Detected (True Positive)")
         else:
             print(f"  [✗] {path.name}: Blind / Missed (False Negative)")
@@ -227,24 +225,25 @@ def run_validation_harness():
             tn += 1
             print(f"  [✓] {path.name}: Clean / Ignored (True Negative)")
 
-    # Compute Statistics
-    cal_recall = (cal_detected / len(calibration_files)) * 100
+    cal_recall = (cal_tp / cal_evaluated) * 100 if cal_evaluated > 0 else 0.0
     held_out_recall = (ho_tp / (ho_tp + ho_fn)) * 100 if (ho_tp + ho_fn) > 0 else 0.0
     aggregate_recall = (
-        (cal_detected + ho_tp) / (len(calibration_files) + ho_tp + ho_fn)
-    ) * 100
+        ((cal_tp + ho_tp) / (cal_evaluated + ho_tp + ho_fn)) * 100
+        if (cal_evaluated + ho_tp + ho_fn) > 0
+        else 0.0
+    )
     fpr = (fp / (fp + tn)) * 100 if (fp + tn) > 0 else 0.0
 
     print("\n" + "=" * 85)
-    print(" 📈 STATISTICAL PERFORMANCE MATRIX")
+    print(" STATISTICAL PERFORMANCE MATRIX")
     print("=" * 85)
-    print(f"  Calibration Recall (n={len(calibration_files)}):      {cal_recall:.2f}%")
+    print(f"  Calibration Recall (n={cal_evaluated}):      {cal_recall:.2f}%")
     print(
         f"  Held-Out Recall (n={ho_tp + ho_fn}):          {held_out_recall:.2f}%  "
         "<-- REAL Performance"
     )
     print(
-        f"  Aggregate Recall (n={len(calibration_files) + ho_tp + ho_fn}):        "
+        f"  Aggregate Recall (n={cal_evaluated + ho_tp + ho_fn}):        "
         f"{aggregate_recall:.2f}%"
     )
     print(f"  False Positive Rate (n={fp + tn}):     {fpr:.2f}%")
