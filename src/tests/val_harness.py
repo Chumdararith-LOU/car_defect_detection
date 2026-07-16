@@ -1,83 +1,9 @@
-import cv2
-import numpy as np
 from pathlib import Path
-from ultralytics import YOLO
-from src.inference.router import get_stitched_probability_map
-
-
-class RawStage1Router:
-    """Consolidated router for batch evaluation matching production specifications."""
-
-    def __init__(
-        self,
-        model_path,
-        pixel_thresh_high=0.85,
-        pixel_thresh_low=0.40,
-        min_cc_area=20,
-        overlap_frac=0.15,
-    ):
-        self.yolo_model = YOLO(model_path, task="semantic")
-        self.net = self.yolo_model.model
-        self.net.eval()
-        self.device = next(self.net.parameters()).device
-        self.pixel_thresh_high = pixel_thresh_high
-        self.pixel_thresh_low = pixel_thresh_low
-        self.min_cc_area = min_cc_area
-        self.overlap_frac = overlap_frac
-
-    def get_tile_coords(self, h, w):
-        h_mid, w_mid = h // 2, w // 2
-        oh, ow = int(h * self.overlap_frac), int(w * self.overlap_frac)
-        return [
-            ((0, min(h, h_mid + oh)), (0, min(w, w_mid + ow))),
-            ((0, min(h, h_mid + oh)), (max(0, w_mid - ow), w)),
-            ((max(0, h_mid - oh), h), (0, min(w, w_mid + ow))),
-            ((max(0, h_mid - oh), h), (max(0, w_mid - ow), w)),
-        ]
-
-    def route_image(self, img_path, imgsz=640):
-        img = cv2.imread(str(img_path))
-        if img is None:
-            print(f"  [!] Skipped corrupted/missing image: {img_path}")
-            return False
-
-        global_probs = get_stitched_probability_map(
-            img=img,
-            net=self.net,
-            device=self.device,
-            overlap_frac=self.overlap_frac,
-            imgsz=imgsz,
-        )
-
-        mask_high = (global_probs >= self.pixel_thresh_high).astype(np.uint8)
-        mask_low = (global_probs >= self.pixel_thresh_low).astype(np.uint8)
-
-        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
-            mask_low, connectivity=8
-        )
-        gated_mask = np.zeros_like(mask_low)
-        for i in range(1, num_labels):
-            comp = labels == i
-            if np.any(mask_high[comp] > 0):
-                gated_mask[comp] = 1
-
-        # Size filter
-        num_labels_f, labels_f, stats_f, _ = cv2.connectedComponentsWithStats(
-            gated_mask, connectivity=8
-        )
-        final_mask = np.zeros_like(gated_mask)
-        for i in range(1, num_labels_f):
-            if stats_f[i, cv2.CC_STAT_AREA] >= self.min_cc_area:
-                final_mask[labels_f == i] = 1
-
-        return np.any(final_mask > 0)
+from src.inference.router import RawStage1Router
 
 
 def run_validation_harness():
-    model_weight = (
-        "runs/semantic/runs/semantic/Automated_Car_Defect_Stage1_SOD/"
-        "Stage1_SOD_FocalLoss_Full/weights/best.pt"
-    )
+    model_weight = "runs/semantic/runs/semantic/Automated_Car_Defect_Stage1_SOD/Stage1_SOD_FocalLoss_Full/weights/best.pt"
 
     router = RawStage1Router(
         model_path=model_weight,
@@ -160,7 +86,7 @@ def run_validation_harness():
             print(f"  [!] Skipping missing file: {f}")
             continue
         cal_evaluated += 1
-        detected = router.route_image(path)
+        _, _, _, detected = router.route_image(path, imgsz=640)
         if detected:
             cal_tp += 1
             print(f"  [✓] {path.name}: Defect Detected (True Positive)")
@@ -175,7 +101,7 @@ def run_validation_harness():
         if not path.exists():
             print(f"  [!] Skipping missing file: {f}")
             continue
-        detected = router.route_image(path)
+        _, _, _, detected = router.route_image(path, imgsz=640)
         if detected:
             ho_tp += 1
             print(f"  [✓] {path.name}: Defect Detected (True Positive)")
@@ -191,7 +117,7 @@ def run_validation_harness():
         if not path.exists():
             print(f"  [!] Skipping missing file: {f}")
             continue
-        detected = router.route_image(path)
+        _, _, _, detected = router.route_image(path, imgsz=640)
         if detected:
             fp += 1
             print(f"  [✗] {path.name}: False Trigger (False Positive)")
