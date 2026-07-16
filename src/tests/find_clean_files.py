@@ -1,5 +1,3 @@
-# src/tests/find_clean_files.py
-
 import cv2
 import os
 from pathlib import Path
@@ -24,7 +22,7 @@ for mask_file in sorted(os.listdir(masks_dir)):
 
             if img_path.exists():
                 clean_images.append(str(img_path))
-                if len(clean_images) >= 10:
+                if len(clean_images) >= 20:
                     break
 
 for path in clean_images:
