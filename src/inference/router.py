@@ -106,7 +106,7 @@ class RawStage1Router:
             ((max(0, h_mid - oh), h), (max(0, w_mid - ow), w)),  # Bottom-Right
         ]
 
-    def predict_stitched_probabilities(self, img, imgsz=512):
+    def predict_stitched_probabilities(self, img, imgsz):
         """Slices, runs raw-logits inference, and stitches probabilities back to full resolution."""
         return get_stitched_probability_map(
             img, self.net, self.device, self.overlap_frac, imgsz
@@ -166,7 +166,7 @@ class RawStage1Router:
 
         return final_mask
 
-    def route_image(self, img_path, imgsz=512):
+    def route_image(self, img_path, imgsz):
         """High-level entry point for Stage 1 gating routing."""
         img = cv2.imread(str(img_path))
         if img is None:
@@ -199,7 +199,9 @@ if __name__ == "__main__":
     )
 
     try:
-        orig_img, global_probs, final_mask, triggered = router.route_image(test_image)
+        orig_img, global_probs, final_mask, triggered = router.route_image(
+            test_image, imgsz=640
+        )
 
         # Create a visual overlay of the surviving hysteresis mask
         overlay = orig_img.copy()
