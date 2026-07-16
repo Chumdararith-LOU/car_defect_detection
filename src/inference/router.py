@@ -44,8 +44,9 @@ def get_stitched_probability_map(img, net, device, overlap_frac=0.15, imgsz=512)
         logits = raw_output[0] if isinstance(raw_output, tuple) else raw_output
 
         if logits.shape[1] == 1:
-            probs = torch.sigmoid(logits)
-            raw_probs_map = probs[0, 0, :, :].cpu().numpy()
+            extended_logits = torch.cat([torch.zeros_like(logits), logits], dim=1)
+            probs = torch.softmax(extended_logits, dim=1)
+            raw_probs_map = probs[0, 1, :, :].cpu().numpy()
         else:
             probs = torch.softmax(logits, dim=1)
             raw_probs_map = probs[0, 1, :, :].cpu().numpy()
