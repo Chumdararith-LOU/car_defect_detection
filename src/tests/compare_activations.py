@@ -52,7 +52,8 @@ def compare_activations(model_path, img_path, mask_path, imgsz=640, overlap_frac
 
     # 1. Evaluate with Sigmoid
     probs_sig = torch.sigmoid(logits)
-    raw_sig_map = probs_sig[0, 1, :, :].cpu().numpy()
+    sig_channel = 1 if logits.shape[1] > 1 else 0
+    raw_sig_map = probs_sig[0, sig_channel, :, :].cpu().numpy()
     tile_sig_resized = cv2.resize(
         raw_sig_map, (t_w, t_h), interpolation=cv2.INTER_LINEAR
     )

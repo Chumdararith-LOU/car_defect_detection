@@ -58,9 +58,12 @@ class RawStage1Router:
             logits = raw_output[0] if isinstance(raw_output, tuple) else raw_output
 
             # SOFTMAX ACTIVATION
-            probs = torch.softmax(logits, dim=1)
-            target_channel = 1 if logits.shape[1] > 1 else 0
-            raw_probs_map = probs[0, target_channel, :, :].cpu().numpy()
+            if logits.shape[1] == 1:
+                probs = torch.sigmoid(logits)
+                raw_probs_map = probs[0, 0, :, :].cpu().numpy()
+            else:
+                probs = torch.softmax(logits, dim=1)
+                raw_probs_map = probs[0, 1, :, :].cpu().numpy()
 
             tile_probs_resized = cv2.resize(
                 raw_probs_map, (t_w, t_h), interpolation=cv2.INTER_LINEAR
