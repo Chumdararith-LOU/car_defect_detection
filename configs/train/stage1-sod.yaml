@@ -13,14 +13,14 @@ training:
   batch_size: 16
   lr0: 0.001
   weight_decay: 0.0005
-  loss_function: "FocalCrossEntropyLoss"     # Explicitly document the active Python patch
+  loss_function: "FocalCrossEntropyLoss"
   fl_gamma: 2.0
 
 # Industrial Double-Threshold Gating Parameters
 gating_thresholds:
-  pixel_thresh_high: 0.47                    # Calibrated Softmax Anchor Seed (protects flagship 000552)
-  pixel_thresh_low: 0.35                     # Calibrated Softmax Pathway
-  min_cc_area: 20                            # Morphological size rejection
-  max_cc_area_reject: 5000                   # Upper area threshold to reject giant gap/reflection leaks
+  pixel_thresh_high: 0.47
+  pixel_thresh_low: 0.35
+  min_cc_area: 20
+  max_cc_area_reject: 5000
   anomaly_thresh: 0.0005
-  near_miss_margin: 0.20               # Log frames within 20% of anomaly_thresh for manual review
+  near_miss_margin: 0.20
