@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from ultralytics import YOLO
 from ultralytics import settings
+from src.utils.config_helpers import resolve_device
 
 OriginalCrossEntropyLoss = nn.CrossEntropyLoss
 
@@ -108,74 +109,44 @@ def main():
     print(f"Loading configuration from: {args.config}")
     cfg = load_config(args.config)
 
-    mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001")
+    if torch.backends.mps.is_available():
+        os.environ["MLFLOW_ALLOW_FILE_STORE"] = "true"
+        mlflow_uri = "file:///./mlruns"
+        print(
+            "[ℹ] MacBook environment detected: Routing MLflow tracking locally to ./mlruns"
+        )
+    else:
+        mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001")
+
     mlflow.set_tracking_uri(mlflow_uri)
 
     os.environ["MLFLOW_ENABLE_SYSTEM_METRICS_LOGGING"] = "true"
 
     settings.update({"mlflow": False, "tensorboard": True})
 
-    is_nested = "training" in cfg
+    project_name = cfg.get("project", {}).get("name", "car_defect_detection")
+    run_name = cfg.get("project", {}).get("run_name", "experiment_run")
 
-    if is_nested:
-        project_name = cfg.get("logging", {}).get(
-            "experiment_name", "car_defect_detection"
-        )
-        run_name = cfg.get("logging", {}).get("run_name", "experiment_run")
-        model_preset = cfg.get("training", {}).get("backbone", "yolo26n-sem.pt")
-        epochs = cfg.get("training", {}).get("epochs", 50)
-        imgsz = cfg.get("dataset", {}).get("imgsz", 1024)
-        batch_size = cfg.get("training", {}).get("batch_size", 16)
+    model_preset = cfg.get("model", {}).get("preset", "yolo26n-sem.pt")
+    epochs = cfg.get("model", {}).get("epochs", 50)
+    batch_size = cfg.get("dataset", {}).get("batch_size", 16)
+    imgsz = cfg.get("dataset", {}).get("imgsz", 640)
 
-        loss_function = cfg.get("training", {}).get("loss_function", "ce")
-        loss_type = "focal" if loss_function == "FocalCrossEntropyLoss" else "ce"
-        fl_gamma = cfg.get("training", {}).get("fl_gamma", 2.0)
-        task = cfg.get("training", {}).get("task", "semantic")
-    else:
-        project_name = cfg.get(
-            "project_name", cfg.get("project", "car_defect_detection")
-        )
-        run_name = cfg.get("run_name", cfg.get("name", "experiment_run"))
-        model_preset = cfg.get("model_preset", "yolo26s-seg.pt")
-        epochs = cfg.get("epochs", 5)
-        imgsz = cfg.get("imgsz", 1280)
-        batch_size = cfg.get("batch_size", cfg.get("batch", 16))
+    loss_type = cfg.get("pipeline", {}).get("loss_type", "ce")
+    fl_gamma = cfg.get("pipeline", {}).get("fl_gamma", 2.0)
+    task = cfg.get("pipeline", {}).get("task", "semantic")
 
-        loss_type = cfg.get("loss_type", "ce")
-        fl_gamma = cfg.get("fl_gamma", 2.0)
-        task = cfg.get("task", "segment")
-
-    # 2. Resolve Dataset Configuration Path
     if args.data:
         dataset_path = args.data
-    elif is_nested:
-        processed_dir = cfg.get("dataset", {}).get(
-            "processed_dir", "data/processed/sod_tiled"
+    else:
+        dataset_path = cfg.get("dataset", {}).get(
+            "train_config", "data/processed/sod_tiled/sod_data_tiled.yaml"
         )
-        dataset_path = os.path.join(processed_dir, "sod_data_tiled.yaml")
-    else:
-        dataset_path = cfg.get("dataset_config", cfg.get("data"))
 
-    # 3. Dynamic MacBook (MPS/CPU) vs RTX 3090 Server (CUDA) Device Selector
-    cfg_device = (
-        cfg.get("device", 0)
-        if not is_nested
-        else cfg.get("training", {}).get("device", 0)
-    )
-    if str(cfg_device) in ["0", "cuda", "cuda:0"]:
-        if torch.cuda.is_available():
-            resolved_device = 0
-            print("[🚀] GPU/CUDA Detected! Training on RTX 3090 Server.")
-        elif torch.backends.mps.is_available():
-            resolved_device = "mps"
-            print("[💻] Apple Silicon MPS Detected! Training locally on MacBook.")
-        else:
-            resolved_device = "cpu"
-            print("[🐌] No hardware acceleration found. Falling back to CPU.")
-    else:
-        resolved_device = cfg_device
+    device_obj = resolve_device(cfg)
+    resolved_device = str(device_obj)
+    print(f"[*] Ultralytics execution backend assigned to: {resolved_device}")
 
-    # 4. Apply Custom Focal Loss Monkey-Patch if Configured
     if loss_type == "focal":
         FocalCrossEntropyLoss.gamma = fl_gamma
         nn.CrossEntropyLoss = FocalCrossEntropyLoss
@@ -212,8 +183,8 @@ def main():
             imgsz=imgsz,
             batch=batch_size,
             device=resolved_device,
-            workers=cfg.get("workers", 8) if not is_nested else 8,
-            amp=cfg.get("amp", True) if not is_nested else True,
+            workers=cfg.get("hardware", {}).get("workers", 8),
+            amp=cfg.get("hardware", {}).get("amp", True),
             seed=42,
             hsv_h=aug.get("hsv_h", 0.015),
             hsv_s=aug.get("hsv_s", 0.7),
