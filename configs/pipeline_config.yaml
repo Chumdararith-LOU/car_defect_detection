@@ -1,0 +1,31 @@
+project:
+  name: "car_defect_detection"
+  run_name: "stage1_focal_yolo26n_run"
+
+pipeline:
+  task: "semantic"              # Options: "semantic" (for Stage 1 SOD), "segment" (for instance segmentation)
+  loss_type: "focal"            # Options: "focal", "ce" (standard Cross-Entropy)
+  fl_gamma: 2.0                 # Focal loss modulating factor
+
+hardware:
+  device: 0                     # Default target device index (automatically falls back to MPS on Mac / CUDA on server)
+  workers: 4
+  amp: true
+
+dataset:
+  train_config: "data/processed/sod_tiled/sod_data_tiled.yaml"
+  val_splits: "configs/data/val_splits.yaml"
+  imgsz: 640
+  batch_size: 16
+
+gating_thresholds:
+  pixel_thresh_high: 0.47       # Core seed threshold for hysteresis routing
+  pixel_thresh_low: 0.35        # Pathway boundary tracing threshold
+  min_cc_area: 20               # Minimum pixel cluster component size
+  max_cc_area_reject: 5000      # Upper bound anomaly filter bounds
+
+model:
+  preset: "yolo26n-sem.pt"       # Target model architecture weights
+  epochs: 50
+  lr0: 0.001
+  weight_decay: 0.0005
