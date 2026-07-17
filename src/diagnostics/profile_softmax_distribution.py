@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from pathlib import Path
 from ultralytics import YOLO
-from src.inference.router import get_stitched_probability_map
+import torch
 
 
 def build_dynamic_evaluation_lists(images_dir, masks_dir, clean_threshold=0.001):
@@ -77,9 +77,23 @@ def run_softmax_profiling(
             print(f" [!] Missing: {f}")
             continue
         img = cv2.imread(str(path))
-        probs = get_stitched_probability_map(
-            img, net, device, overlap_frac=0.15, imgsz=640
+        h_orig, w_orig = img.shape[:2]
+        img_resized = cv2.resize(img, (640, 640))
+        img_tensor = (
+            (
+                torch.from_numpy(img_resized[:, :, ::-1].copy())
+                .permute(2, 0, 1)
+                .float()
+                / 255.0
+            )
+            .unsqueeze(0)
+            .to(device)
         )
+        with torch.no_grad():
+            raw_out = net(img_tensor)
+        logits = raw_out[0] if isinstance(raw_out, tuple) else raw_out
+        probs = torch.softmax(logits, dim=1)[0, 1, :, :].cpu().numpy()
+        probs = cv2.resize(probs, (w_orig, h_orig), interpolation=cv2.INTER_LINEAR)
 
         tile_max = float(np.max(probs))
         tile_mean = float(np.mean(probs))
@@ -98,9 +112,23 @@ def run_softmax_profiling(
             print(f" [!] Missing: {f}")
             continue
         img = cv2.imread(str(path))
-        probs = get_stitched_probability_map(
-            img, net, device, overlap_frac=0.15, imgsz=640
+        h_orig, w_orig = img.shape[:2]
+        img_resized = cv2.resize(img, (640, 640))
+        img_tensor = (
+            (
+                torch.from_numpy(img_resized[:, :, ::-1].copy())
+                .permute(2, 0, 1)
+                .float()
+                / 255.0
+            )
+            .unsqueeze(0)
+            .to(device)
         )
+        with torch.no_grad():
+            raw_out = net(img_tensor)
+        logits = raw_out[0] if isinstance(raw_out, tuple) else raw_out
+        probs = torch.softmax(logits, dim=1)[0, 1, :, :].cpu().numpy()
+        probs = cv2.resize(probs, (w_orig, h_orig), interpolation=cv2.INTER_LINEAR)
 
         tile_max = float(np.max(probs))
         tile_90th = float(np.percentile(probs, 99.9))
