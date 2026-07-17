@@ -95,7 +95,13 @@ def main():
         "--config",
         type=str,
         required=True,
-        help="Path to the training YAML configuration file (e.g., configs/train/yolo26s-seg.yaml)",
+        help="Path to the training YAML configuration file (like configs/train/yolo26s-seg.yaml)",
+    )
+    parser.add_argument(
+        "--data",
+        type=str,
+        default=None,
+        help="Override dataset config path (defaults to dataset_config in yaml or derived from processed_dir)",
     )
     args = parser.parse_args()
 
@@ -107,19 +113,69 @@ def main():
 
     os.environ["MLFLOW_ENABLE_SYSTEM_METRICS_LOGGING"] = "true"
 
-    # Passive background logging initialization
     settings.update({"mlflow": False, "tensorboard": True})
 
-    project_name = cfg.get("project", cfg.get("project_name", "car_defect_detection"))
-    run_name = cfg.get("name", cfg.get("run_name", "experiment_run"))
-    dataset_path = cfg.get("data", cfg.get("dataset_config"))
-    batch_size = cfg.get("batch", cfg.get("batch_size", 16))
+    is_nested = "training" in cfg
 
-    aug = cfg.get("augmentations", cfg)
+    if is_nested:
+        project_name = cfg.get("logging", {}).get(
+            "experiment_name", "car_defect_detection"
+        )
+        run_name = cfg.get("logging", {}).get("run_name", "experiment_run")
+        model_preset = cfg.get("training", {}).get("backbone", "yolo26n-sem.pt")
+        epochs = cfg.get("training", {}).get("epochs", 50)
+        imgsz = cfg.get("dataset", {}).get("imgsz", 1024)
+        batch_size = cfg.get("training", {}).get("batch_size", 16)
 
-    loss_type = cfg.get("loss_type", "ce")
+        loss_function = cfg.get("training", {}).get("loss_function", "ce")
+        loss_type = "focal" if loss_function == "FocalCrossEntropyLoss" else "ce"
+        fl_gamma = cfg.get("training", {}).get("fl_gamma", 2.0)
+    else:
+        project_name = cfg.get(
+            "project_name", cfg.get("project", "car_defect_detection")
+        )
+        run_name = cfg.get("run_name", cfg.get("name", "experiment_run"))
+        model_preset = cfg.get("model_preset", "yolo26s-seg.pt")
+        epochs = cfg.get("epochs", 5)
+        imgsz = cfg.get("imgsz", 1280)
+        batch_size = cfg.get("batch_size", cfg.get("batch", 16))
+
+        loss_type = cfg.get("loss_type", "ce")
+        fl_gamma = cfg.get("fl_gamma", 2.0)
+
+    # 2. Resolve Dataset Configuration Path
+    if args.data:
+        dataset_path = args.data
+    elif is_nested:
+        processed_dir = cfg.get("dataset", {}).get(
+            "processed_dir", "data/processed/sod_tiled"
+        )
+        dataset_path = os.path.join(processed_dir, "sod_data_tiled.yaml")
+    else:
+        dataset_path = cfg.get("dataset_config", cfg.get("data"))
+
+    # 3. Dynamic MacBook (MPS/CPU) vs RTX 3090 Server (CUDA) Device Selector
+    cfg_device = (
+        cfg.get("device", 0)
+        if not is_nested
+        else cfg.get("training", {}).get("device", 0)
+    )
+    if str(cfg_device) in ["0", "cuda", "cuda:0"]:
+        if torch.cuda.is_available():
+            resolved_device = 0
+            print("[🚀] GPU/CUDA Detected! Training on RTX 3090 Server.")
+        elif torch.backends.mps.is_available():
+            resolved_device = "mps"
+            print("[💻] Apple Silicon MPS Detected! Training locally on MacBook.")
+        else:
+            resolved_device = "cpu"
+            print("[🐌] No hardware acceleration found. Falling back to CPU.")
+    else:
+        resolved_device = cfg_device
+
+    # 4. Apply Custom Focal Loss Monkey-Patch if Configured
     if loss_type == "focal":
-        FocalCrossEntropyLoss.gamma = cfg.get("fl_gamma", 2.0)
+        FocalCrossEntropyLoss.gamma = fl_gamma
         nn.CrossEntropyLoss = FocalCrossEntropyLoss
         print(
             f"[🔥] Successfully patched nn.CrossEntropyLoss to FocalCrossEntropyLoss (gamma={FocalCrossEntropyLoss.gamma})"
@@ -128,8 +184,10 @@ def main():
         nn.CrossEntropyLoss = OriginalCrossEntropyLoss
         print("[ℹ] Using standard CrossEntropyLoss")
 
-    print(f"Initializing architecture weights: {cfg['model_preset']}")
-    model = YOLO(cfg["model_preset"])
+    aug = cfg.get("augmentations", cfg)
+
+    print(f"Initializing architecture weights: {model_preset}")
+    model = YOLO(model_preset)
 
     print(f"Launching experiment: project={project_name}, run={run_name}")
 
@@ -138,26 +196,22 @@ def main():
     os.environ["MLFLOW_KEEP_RUN_ACTIVE"] = "True"
 
     with mlflow.start_run(run_name=run_name):
-        # Enforce data lineage tags
         git_hash = get_git_commit()
         mlflow.set_tag("git_commit", git_hash)
         mlflow.log_artifact(args.config, artifact_path="configs")
 
-        # Track the configuration blueprint path
         mlflow.log_param("config_blueprint", args.config)
-        mlflow.log_param("model_preset", cfg["model_preset"])
+        mlflow.log_param("model_preset", model_preset)
 
         model.train(
-            # Task & Paths
             data=dataset_path,
-            epochs=cfg["epochs"],
-            imgsz=cfg["imgsz"],
+            epochs=epochs,
+            imgsz=imgsz,
             batch=batch_size,
-            device=cfg["device"],
-            workers=cfg.get("workers", 8),
-            amp=cfg.get("amp", True),
-            seed=42,  # Lock shuffle distributions to guarantee fair comparisons (PTQ vs QAT)
-            # Environmental Defense Augmentations
+            device=resolved_device,
+            workers=cfg.get("workers", 8) if not is_nested else 8,
+            amp=cfg.get("amp", True) if not is_nested else True,
+            seed=42,
             hsv_h=aug.get("hsv_h", 0.015),
             hsv_s=aug.get("hsv_s", 0.7),
             hsv_v=aug.get("hsv_v", 0.4),
