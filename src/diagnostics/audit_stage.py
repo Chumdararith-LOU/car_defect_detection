@@ -11,19 +11,26 @@ def get_tile_2_coords(h, w, overlap_frac=0.15):
     return (max(0, h_mid - oh), h), (0, min(w, w_mid + ow))
 
 
-def run_diagnostic_audit(model_path, img_path, mask_path, imgsz=640, overlap_frac=0.15):
+def run_diagnostic_audit(
+    model_path,
+    img_path,
+    mask_path,
+    imgsz=640,
+    overlap_frac=0.15,
+    tail_y_start=365,
+    tail_y_end=379,
+    pixel_thresh_low=0.18,
+):
     print("=" * 80)
     print(" 🛠️  PHASE 3 PRE-DEPLOYMENT SAFETY & CALIBRATION AUDIT")
     print("=" * 80)
 
-    # 1. Load Model and Raw Logits Network
     print("[+] Loading best model weights...")
     model = YOLO(model_path, task="semantic")
     net = model.model
     net.eval()
     device = next(net.parameters()).device
 
-    # 2. Load Original Image & Ground Truth Mask
     img = cv2.imread(str(img_path))
     gt_mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
     if img is None or gt_mask is None:
@@ -31,18 +38,15 @@ def run_diagnostic_audit(model_path, img_path, mask_path, imgsz=640, overlap_fra
 
     h_orig, w_orig = img.shape[:2]
 
-    # Locate crack coordinates in the thinnest tail region (Y=365 to Y=379)
     y_coords, x_coords = np.where(gt_mask > 0)
-    tail_indices = np.where((y_coords >= 365) & (y_coords <= 379))[0]
+    tail_indices = np.where((y_coords >= tail_y_start) & (y_coords <= tail_y_end))[0]
     tail_y = y_coords[tail_indices]
     tail_x = x_coords[tail_indices]
 
-    # 3. Process Tile 2 (Bottom-Left)
     (y0, y1), (x0, x1) = get_tile_2_coords(h_orig, w_orig, overlap_frac)
     tile_crop = img[y0:y1, x0:x1]
     t_h, t_w = tile_crop.shape[:2]
 
-    # Run Raw forward pass at production 640x640 resolution
     tile_resized = cv2.resize(tile_crop, (imgsz, imgsz))
     img_tensor = (
         torch.from_numpy(tile_resized[:, :, ::-1].copy()).permute(2, 0, 1).float()
@@ -58,25 +62,19 @@ def run_diagnostic_audit(model_path, img_path, mask_path, imgsz=640, overlap_fra
     target_channel = 1 if logits.shape[1] > 1 else 0
     raw_probs_map = probs[0, target_channel, :, :].cpu().numpy()
 
-    # Scale probabilities back to unresized crop coordinates
     tile_probs = cv2.resize(raw_probs_map, (t_w, t_h), interpolation=cv2.INTER_LINEAR)
 
     print("\nExecuting Step 1: Isolated Erosion Failure Test...")
 
-    # Generate low-threshold binary mask
-    pixel_thresh_low = 0.18
     mask_low = (tile_probs >= pixel_thresh_low).astype(np.uint8)
 
-    # Apply standard 2x2 erosion (The supervisor's critical warning)
     kernel_2x2 = np.ones((2, 2), np.uint8)
     mask_eroded = cv2.erode(mask_low, kernel_2x2, iterations=1)
 
-    # Track the tail pixel survival
     pre_erosion_pixels = 0
     post_erosion_pixels = 0
 
     for ty, tx in zip(tail_y, tail_x):
-        # Convert global coordinates to Tile 2 local coordinates
         local_y, local_x = ty - y0, tx - x0
 
         if mask_low[local_y, local_x] > 0:
@@ -154,9 +152,53 @@ def run_diagnostic_audit(model_path, img_path, mask_path, imgsz=640, overlap_fra
 
 
 if __name__ == "__main__":
-    # Point directly to your best tiled-trained model weights
-    model_weight = "mlruns/1/ba4046a349434a88a5dcade830554f65/artifacts/weights/best.pt"
-    img_file = "data/processed/sod/val/images/000552.jpg"
-    mask_file = "data/processed/sod/val/masks/000552.png"
+    import argparse
 
-    run_diagnostic_audit(model_weight, img_file, mask_file)
+    parser = argparse.ArgumentParser(
+        description="Phase 3 Pre-Deployment Safety & Calibration Audit"
+    )
+    parser.add_argument(
+        "--model", type=str, required=True, help="Path to YOLO semantic weights"
+    )
+    parser.add_argument(
+        "--image", type=str, required=True, help="Path to evaluation image"
+    )
+    parser.add_argument(
+        "--mask", type=str, required=True, help="Path to ground-truth mask"
+    )
+    parser.add_argument(
+        "--imgsz", type=int, default=640, help="Inference resolution size"
+    )
+    parser.add_argument(
+        "--overlap", type=float, default=0.15, help="Tile overlap fraction"
+    )
+    parser.add_argument(
+        "--tail_y_start",
+        type=int,
+        default=365,
+        help="Y-start coordinate for tail erosion test",
+    )
+    parser.add_argument(
+        "--tail_y_end",
+        type=int,
+        default=379,
+        help="Y-end coordinate for tail erosion test",
+    )
+    parser.add_argument(
+        "--pixel_thresh_low",
+        type=float,
+        default=0.18,
+        help="Low pixel threshold to evaluate",
+    )
+    args = parser.parse_args()
+
+    run_diagnostic_audit(
+        model_path=args.model,
+        img_path=args.image,
+        mask_path=args.mask,
+        imgsz=args.imgsz,
+        overlap_frac=args.overlap,
+        tail_y_start=args.tail_y_start,
+        tail_y_end=args.tail_y_end,
+        pixel_thresh_low=args.pixel_thresh_low,
+    )

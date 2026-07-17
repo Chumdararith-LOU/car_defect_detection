@@ -17,9 +17,7 @@ def build_dynamic_evaluation_lists(images_dir, masks_dir, clean_threshold=0.001)
     clean_tiles = []
     defect_tiles = []
 
-    # Assuming your tiled images are .png or .jpg. Adjust glob if needed.
     for img_path in images_path.glob("*.png"):
-        # Handle both .png and .jpg mask naming conventions
         mask_path_png = masks_path / (img_path.stem + ".png")
         mask_path_jpg = masks_path / (img_path.stem + ".jpg")
 
@@ -28,18 +26,16 @@ def build_dynamic_evaluation_lists(images_dir, masks_dir, clean_threshold=0.001)
         elif mask_path_jpg.exists():
             mask_path = mask_path_jpg
         else:
-            continue  # Skip if no mask exists
+            continue
 
         mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
         if mask is None:
             continue
 
-        # Count actual defect pixels
         defect_pixels = np.sum(mask > 0)
         total_pixels = mask.shape[0] * mask.shape[1]
         defect_ratio = defect_pixels / total_pixels
 
-        # Categorize based on mask, NOT filename
         if defect_ratio <= clean_threshold:
             clean_tiles.append(str(img_path))
         else:
@@ -51,25 +47,23 @@ def build_dynamic_evaluation_lists(images_dir, masks_dir, clean_threshold=0.001)
     return clean_tiles, defect_tiles
 
 
-def run_softmax_profiling():
-    model_weight = "runs/semantic/runs/semantic/Automated_Car_Defect_Stage1_SOD/Stage1_SOD_FocalLoss_Full/weights/best.pt"
-
+def run_softmax_profiling(
+    model_path, images_dir, masks_dir, clean_threshold=0.001, limit=10
+):
     print("[+] Loading retrained Stage 1 Model...")
-    model = YOLO(model_weight, task="semantic")
+    model = YOLO(model_path, task="semantic")
     net = model.model
     net.eval()
     device = next(net.parameters()).device
 
-    # DYNAMICALLY BUILD LISTS
     clean_tiles, defect_tiles = build_dynamic_evaluation_lists(
-        images_dir="data/processed/sod_tiled/images/val",
-        masks_dir="data/processed/sod_tiled/masks/val",
-        clean_threshold=0.001,  # 0.1% tolerance
+        images_dir=images_dir,
+        masks_dir=masks_dir,
+        clean_threshold=clean_threshold,
     )
 
-    # Optional: Cap the lists to a manageable number for quick profiling
-    clean_tiles = clean_tiles[:10]
-    defect_tiles = defect_tiles[:10]
+    clean_tiles = clean_tiles[:limit]
+    defect_tiles = defect_tiles[:limit]
 
     print("\n" + "=" * 80)
     print(" 📊 PROFILING CLEAN BACKGROUND TILES (ESTABLISHING THE NOISE FLOOR)")
@@ -133,4 +127,44 @@ def run_softmax_profiling():
 
 
 if __name__ == "__main__":
-    run_softmax_profiling()
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Softmax Profile Calibration Diagnostic"
+    )
+    parser.add_argument(
+        "--model", type=str, required=True, help="Path to YOLO semantic weights"
+    )
+    parser.add_argument(
+        "--images_dir",
+        type=str,
+        default="data/processed/sod_tiled/images/val",
+        help="Tiled images dir",
+    )
+    parser.add_argument(
+        "--masks_dir",
+        type=str,
+        default="data/processed/sod_tiled/masks/val",
+        help="Tiled masks/labels dir",
+    )
+    parser.add_argument(
+        "--clean_threshold",
+        type=float,
+        default=0.001,
+        help="Max defect ratio to consider background clean",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="Cap evaluation runs limit to speed up processing",
+    )
+    args = parser.parse_args()
+
+    run_softmax_profiling(
+        model_path=args.model,
+        images_dir=args.images_dir,
+        masks_dir=args.masks_dir,
+        clean_threshold=args.clean_threshold,
+        limit=args.limit,
+    )

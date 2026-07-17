@@ -6,14 +6,13 @@ from src.inference.router import get_stitched_probability_map
 
 
 def inspect_geometric_properties(
-    img_path, net, device, pixel_thresh_high, pixel_thresh_low
+    img_path, net, device, pixel_thresh_high=0.85, pixel_thresh_low=0.40
 ):
     img = cv2.imread(str(img_path))
     if img is None:
         print(f" [!] Could not load {img_path}")
         return
 
-    # Unified 640-resolution processing
     global_probs = get_stitched_probability_map(
         img, net, device, overlap_frac=0.15, imgsz=640
     )
@@ -50,38 +49,44 @@ def inspect_geometric_properties(
         print(f"     * Aspect Ratio:  {aspect_ratio:.3f}")
 
 
-def run_inspection():
-    model_weight = "runs/semantic/runs/semantic/Automated_Car_Defect_Stage1_SOD/Stage1_SOD_FocalLoss_Full/weights/best.pt"
-    model = YOLO(model_weight, task="semantic")
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Connected Components Geometric Autopsy"
+    )
+    parser.add_argument("--model", type=str, required=True, help="Path to YOLO weights")
+    parser.add_argument(
+        "--images",
+        type=str,
+        nargs="+",
+        required=True,
+        help="Space-separated paths to input images for diagnostic inspection",
+    )
+    parser.add_argument(
+        "--pixel_thresh_high",
+        type=float,
+        default=0.85,
+        help="Hysteresis high seed threshold",
+    )
+    parser.add_argument(
+        "--pixel_thresh_low",
+        type=float,
+        default=0.40,
+        help="Hysteresis low path threshold",
+    )
+    args = parser.parse_args()
+
+    model = YOLO(args.model, task="semantic")
     net = model.model
     net.eval()
     device = next(net.parameters()).device
 
-    # Inspect flagship failure image
-    inspect_geometric_properties(
-        "data/processed/sod/val/images/000552.jpg",
-        net,
-        device,
-        pixel_thresh_high=0.85,
-        pixel_thresh_low=0.40,
-    )
-
-    # Inspect false positive tiles
-    inspect_geometric_properties(
-        "data/processed/sod_tiled/images/val/000707_t2.png",
-        net,
-        device,
-        pixel_thresh_high=0.85,
-        pixel_thresh_low=0.40,
-    )
-    inspect_geometric_properties(
-        "data/processed/sod_tiled/images/val/000784_t2.png",
-        net,
-        device,
-        pixel_thresh_high=0.85,
-        pixel_thresh_low=0.40,
-    )
-
-
-if __name__ == "__main__":
-    run_inspection()
+    for img_path in args.images:
+        inspect_geometric_properties(
+            img_path=img_path,
+            net=net,
+            device=device,
+            pixel_thresh_high=args.pixel_thresh_high,
+            pixel_thresh_low=args.pixel_thresh_low,
+        )
