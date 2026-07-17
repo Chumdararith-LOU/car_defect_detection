@@ -4,7 +4,9 @@ import torch
 from ultralytics import YOLO
 
 
-def compare_activations(model_path, img_path, mask_path, imgsz=640, overlap_frac=0.15):
+def compare_activations(
+    model_path, img_path, mask_path, imgsz=640, overlap_frac=0.15, target_y=379
+):
     print("=" * 85)
     print(" 🔬 SIGMOID VS SOFTMAX ACTIVATION DIAGNOSTIC")
     print("=" * 85)
@@ -20,15 +22,11 @@ def compare_activations(model_path, img_path, mask_path, imgsz=640, overlap_frac
         raise FileNotFoundError("Could not find source image or mask.")
 
     h_orig, w_orig = img.shape[:2]
-
-    # Target pixel coordinates at the thin tail base (Y=379)
-    target_y = 379
     x_coords = np.where(gt_mask[target_y, :] > 0)[0]
     if len(x_coords) == 0:
         raise ValueError("No target mask pixels found at Y=379.")
-    target_x = int(np.mean(x_coords))  # Take center of the crack path
+    target_x = int(np.mean(x_coords))
 
-    # Crop and process Tile 2 (Bottom-Left)
     h_mid, w_mid = h_orig // 2, w_orig // 2
     oh, ow = int(h_orig * overlap_frac), int(w_orig * overlap_frac)
     y0, y1 = max(0, h_mid - oh), h_orig
@@ -37,7 +35,6 @@ def compare_activations(model_path, img_path, mask_path, imgsz=640, overlap_frac
     tile_crop = img[y0:y1, x0:x1]
     t_h, t_w = tile_crop.shape[:2]
 
-    # Preprocess tile
     tile_resized = cv2.resize(tile_crop, (imgsz, imgsz))
     img_tensor = (
         torch.from_numpy(tile_resized[:, :, ::-1].copy()).permute(2, 0, 1).float()
@@ -50,7 +47,6 @@ def compare_activations(model_path, img_path, mask_path, imgsz=640, overlap_frac
 
     logits = raw_output[0] if isinstance(raw_output, tuple) else raw_output
 
-    # 1. Evaluate with Sigmoid
     probs_sig = torch.sigmoid(logits)
     sig_channel = 1 if logits.shape[1] > 1 else 0
     raw_sig_map = probs_sig[0, sig_channel, :, :].cpu().numpy()
@@ -59,7 +55,6 @@ def compare_activations(model_path, img_path, mask_path, imgsz=640, overlap_frac
     )
     val_sigmoid = tile_sig_resized[target_y - y0, target_x - x0]
 
-    # 2. Evaluate with Softmax (Mathematically paired with Categorical CE Loss)
     probs_soft = torch.softmax(logits, dim=1)
     raw_soft_map = probs_soft[0, 1, :, :].cpu().numpy()
     tile_soft_resized = cv2.resize(
@@ -94,9 +89,30 @@ def compare_activations(model_path, img_path, mask_path, imgsz=640, overlap_frac
 
 
 if __name__ == "__main__":
-    # Point directly to your best tiled-trained model weights
-    model_weight = "mlruns/1/ba4046a349434a88a5dcade830554f65/artifacts/weights/best.pt"
-    img_file = "data/processed/sod/val/images/000552.jpg"
-    mask_file = "data/processed/sod/val/masks/000552.png"
+    import argparse
 
-    compare_activations(model_weight, img_file, mask_file)
+    parser = argparse.ArgumentParser(
+        description="Sigmoid vs Softmax Activation Diagnostic"
+    )
+    parser.add_argument(
+        "--model", type=str, required=True, help="Path to YOLO semantic weights"
+    )
+    parser.add_argument("--image", type=str, required=True, help="Path to input image")
+    parser.add_argument(
+        "--mask", type=str, required=True, help="Path to ground truth mask"
+    )
+    parser.add_argument(
+        "--target_y", type=int, default=379, help="Target Y coordinate line to analyze"
+    )
+    parser.add_argument(
+        "--imgsz", type=int, default=640, help="Inference resolution size"
+    )
+    args = parser.parse_args()
+
+    compare_activations(
+        model_path=args.model,
+        img_path=args.image,
+        mask_path=args.mask,
+        imgsz=args.imgsz,
+        target_y=args.target_y,
+    )
