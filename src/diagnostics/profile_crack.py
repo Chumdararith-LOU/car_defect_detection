@@ -21,7 +21,7 @@ def get_tile_coords(h, w, overlap_frac=0.15):
 
 
 def extract_tiled_confidence_profile(
-    model_path, img_path, mask_path, imgsz=640, overlap_frac=0.15
+    model_path, img_path, mask_path, imgsz=640, overlap_frac=0.15, tiled=True
 ):
     print(f"[+] Loading model and initializing raw-logits bypass at {imgsz}x{imgsz}...")
     model = YOLO(model_path, task="semantic")
@@ -38,64 +38,81 @@ def extract_tiled_confidence_profile(
     if len(y_coords) == 0:
         raise ValueError("No defect pixels found in the ground truth mask.")
 
-    # Sort coordinates from top to bottom (by Y-coordinate)
     sorted_indices = np.argsort(y_coords)
     y_sorted = y_coords[sorted_indices]
     x_sorted = x_coords[sorted_indices]
 
-    # 2. Load the original image
     img = cv2.imread(str(img_path))
     if img is None:
         raise FileNotFoundError(f"Could not load image at {img_path}")
     h_orig, w_orig = img.shape[:2]
 
-    # Initialize global canvas and single-tile canvases (to track unstitched probabilities)
     global_probs = np.zeros((h_orig, w_orig), dtype=np.float32)
     tile_canvases = [
         np.full((h_orig, w_orig), -1.0, dtype=np.float32) for _ in range(4)
     ]
 
-    # 3. Slice, Infer on Tiles, and Deconstruct
-    tile_bounds = get_tile_coords(h_orig, w_orig, overlap_frac)
-    print(f"[+] Slicing image with {overlap_frac*100:.1f}% overlap...")
+    if tiled:
+        tile_bounds = get_tile_coords(h_orig, w_orig, overlap_frac)
+        print(f"[+] Slicing image with {overlap_frac*100:.1f}% overlap...")
 
-    for idx, ((y0, y1), (x0, x1)) in enumerate(tile_bounds):
-        tile_crop = img[y0:y1, x0:x1]
-        t_h, t_w = tile_crop.shape[:2]
+        for idx, ((y0, y1), (x0, x1)) in enumerate(tile_bounds):
+            tile_crop = img[y0:y1, x0:x1]
+            t_h, t_w = tile_crop.shape[:2]
 
-        # Preprocess tile to production size (640x640)
-        tile_resized = cv2.resize(tile_crop, (imgsz, imgsz))
+            tile_resized = cv2.resize(tile_crop, (imgsz, imgsz))
+            img_tensor = (
+                torch.from_numpy(tile_resized[:, :, ::-1].copy())
+                .permute(2, 0, 1)
+                .float()
+                / 255.0
+            )
+            img_tensor = img_tensor.unsqueeze(0).to(device)
+
+            with torch.no_grad():
+                raw_output = net(img_tensor)
+
+            logits = raw_output[0] if isinstance(raw_output, tuple) else raw_output
+            probs = torch.sigmoid(logits)
+
+            target_channel = 1 if logits.shape[1] > 1 else 0
+            raw_probs_map = probs[0, target_channel, :, :].cpu().numpy()
+
+            tile_probs_resized = cv2.resize(
+                raw_probs_map, (t_w, t_h), interpolation=cv2.INTER_LINEAR
+            )
+
+            tile_canvases[idx][y0:y1, x0:x1] = tile_probs_resized
+            global_probs[y0:y1, x0:x1] = np.maximum(
+                global_probs[y0:y1, x0:x1], tile_probs_resized
+            )
+    else:
+        print(f"[+] Running untiled standard inference at {imgsz}x{imgsz}...")
+        img_resized = cv2.resize(img, (imgsz, imgsz))
         img_tensor = (
-            torch.from_numpy(tile_resized[:, :, ::-1].copy()).permute(2, 0, 1).float()
-            / 255.0
+            (
+                torch.from_numpy(img_resized[:, :, ::-1].copy())
+                .permute(2, 0, 1)
+                .float()
+                / 255.0
+            )
+            .unsqueeze(0)
+            .to(device)
         )
-        img_tensor = img_tensor.unsqueeze(0).to(device)
 
-        # Raw forward pass
         with torch.no_grad():
             raw_output = net(img_tensor)
 
         logits = raw_output[0] if isinstance(raw_output, tuple) else raw_output
         probs = torch.sigmoid(logits)
 
-        # Extract defect class probability map
         target_channel = 1 if logits.shape[1] > 1 else 0
         raw_probs_map = probs[0, target_channel, :, :].cpu().numpy()
 
-        # Scale probabilities back to original unresized tile shape
-        tile_probs_resized = cv2.resize(
-            raw_probs_map, (t_w, t_h), interpolation=cv2.INTER_LINEAR
+        global_probs = cv2.resize(
+            raw_probs_map, (w_orig, h_orig), interpolation=cv2.INTER_LINEAR
         )
 
-        # Store in individual tile canvas to analyze unstitched signal
-        tile_canvases[idx][y0:y1, x0:x1] = tile_probs_resized
-
-        # Stitch into global canvas using max pooling
-        global_probs[y0:y1, x0:x1] = np.maximum(
-            global_probs[y0:y1, x0:x1], tile_probs_resized
-        )
-
-    # 4. Extract and analyze confidence along the sorted crack path
     unique_ys = np.unique(y_sorted)
     profile_data = []
 
@@ -176,8 +193,36 @@ def extract_tiled_confidence_profile(
 
 
 if __name__ == "__main__":
-    model_weight = "mlruns/1/ba4046a349434a88a5dcade830554f65/artifacts/weights/best.pt"
-    img_file = "data/processed/sod/val/images/000552.jpg"
-    mask_file = "data/processed/sod/val/masks/000552.png"
+    import argparse
 
-    extract_tiled_confidence_profile(model_weight, img_file, mask_file)
+    parser = argparse.ArgumentParser(
+        description="Extract 1D continuous confidence profile along defect coordinates"
+    )
+    parser.add_argument("--model", type=str, required=True, help="Path to YOLO weights")
+    parser.add_argument(
+        "--image", type=str, required=True, help="Path to evaluation image"
+    )
+    parser.add_argument(
+        "--mask", type=str, required=True, help="Path to ground-truth mask"
+    )
+    parser.add_argument(
+        "--imgsz", type=int, default=640, help="Inference resolution size"
+    )
+    parser.add_argument(
+        "--overlap", type=float, default=0.15, help="Tile overlap fraction (0.15 = 15%)"
+    )
+    parser.add_argument(
+        "--no-tiling",
+        action="store_true",
+        help="Bypass overlapping tiling (run untiled)",
+    )
+    args = parser.parse_args()
+
+    extract_tiled_confidence_profile(
+        model_path=args.model,
+        img_path=args.image,
+        mask_path=args.mask,
+        imgsz=args.imgsz,
+        overlap_frac=args.overlap,
+        tiled=not args.no_tiling,
+    )

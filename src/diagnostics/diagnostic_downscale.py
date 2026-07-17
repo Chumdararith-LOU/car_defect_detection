@@ -23,18 +23,15 @@ def diagnostic_downscale_survival_v2(
 
     print("[+] Scanning dataset to isolate the smallest defects...")
 
-    # 1. Measure every defect's size first
     sizes = []
     for p in all_masks:
         m = cv2.imread(str(p), cv2.IMREAD_GRAYSCALE)
         if m is None:
             continue
-        # Convert YOLO class ID / 255 scaled masks to binary [0, 1]
         active = np.sum(m > 0)
         if active > 0:
             sizes.append((p, active))
 
-    # 2. Target the smallest defects in the dataset (the actual risk zone)
     sizes.sort(key=lambda x: x[1])
     cutoff = max(1, int(len(sizes) * sample_percentile / 100))
     sample = sizes[:cutoff][:n_samples]
@@ -50,16 +47,13 @@ def diagnostic_downscale_survival_v2(
         h, w = m.shape
         mask_bin = (m > 0).astype(np.float32)
 
-        # Original proportional footprint
         orig_fraction = orig_pixels / (h * w)
 
-        # Simulate bottleneck and apply threshold
         resized = cv2.resize(mask_bin, target_size, interpolation=cv2.INTER_AREA)
         surviving_fraction = np.sum(resized >= threshold) / (
             target_size[0] * target_size[1]
         )
 
-        # Compare fraction-to-fraction, not count-to-count
         preserved_pct = (
             (surviving_fraction / orig_fraction * 100) if orig_fraction > 0 else 0
         )
@@ -68,7 +62,6 @@ def diagnostic_downscale_survival_v2(
             f"  {p.name}: {orig_pixels}px ({orig_fraction*100:.3f}% of canvas) -> {preserved_pct:.1f}% preserved"
         )
 
-    # 3. Aggregate Results
     rates = np.array(rates)
     print("-" * 70)
     print(f"Median preservation: {np.median(rates):.1f}%")
@@ -86,11 +79,47 @@ def diagnostic_downscale_survival_v2(
 
 
 if __name__ == "__main__":
-    # Point this to your processed masks directory
-    # Depending on your current architecture, it might be in 'masks' or 'labels'
-    target_directory = "data/processed/sod/val/masks"
+    import argparse
 
-    if Path(target_directory).exists():
-        diagnostic_downscale_survival_v2(target_directory)
+    parser = argparse.ArgumentParser(
+        description="Downscale Diagnostic: Analyze spatial area fraction preservation of micro-defects"
+    )
+    parser.add_argument(
+        "--mask_dir",
+        type=str,
+        default="data/processed/sod/val/masks",
+        help="Directory containing ground truth png masks",
+    )
+    parser.add_argument(
+        "--target_w", type=int, default=320, help="Target simulation width resolution"
+    )
+    parser.add_argument(
+        "--target_h", type=int, default=320, help="Target simulation height resolution"
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.70,
+        help="Binarization confidence threshold after resizing",
+    )
+    parser.add_argument(
+        "--percentile",
+        type=int,
+        default=10,
+        help="Focus on the bottom X% smallest defects",
+    )
+    parser.add_argument(
+        "--samples", type=int, default=100, help="Limit execution sample size"
+    )
+    args = parser.parse_args()
+
+    if Path(args.mask_dir).exists():
+        diagnostic_downscale_survival_v2(
+            mask_dir=args.mask_dir,
+            target_size=(args.target_w, args.target_h),
+            threshold=args.threshold,
+            sample_percentile=args.percentile,
+            n_samples=args.samples,
+        )
     else:
-        print(f"[!] Please ensure the dataset exists at: {target_directory}")
+        print(f"[!] Please ensure the dataset exists at: {args.mask_dir}")
