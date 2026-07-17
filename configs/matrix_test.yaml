@@ -1,0 +1,30 @@
+models:
+  - id: "yolo26n_tiled_1024_focal"
+    path: "/home/rith/secure_workspace/car_defect_detection/mlruns/1/122e3f76a2ee4d6abbcc94698b217266/artifacts/weights/best.pt"
+    tiled: true
+    imgsz: 1024
+
+  - id: "yolo26n_tiled_640_focal"
+    path: "/home/rith/secure_workspace/car_defect_detection/mlruns/1/403d6b3100d24013ad035979df412e97/artifacts/weights/best.pt"
+    tiled: true
+    imgsz: 640
+
+  - id: "yolo26m_tiled_640_focal"
+    path: "/home/rith/secure_workspace/car_defect_detection/mlruns/1/f3b8f26d4f5847d2bc57f453253af798/artifacts/weights/best.pt"
+    tiled: true
+    imgsz: 640
+
+  - id: "yolo26m_untiled_640_ce_b32"
+    path: "/home/rith/secure_workspace/car_defect_detection/mlruns/1/ba4046a349434a88a5dcade830554f65/artifacts/weights/best.pt"
+    tiled: false
+    imgsz: 640
+
+  - id: "yolo26m_untiled_640_ce_b16"
+    path: "/home/rith/secure_workspace/car_defect_detection/mlruns/1/fa5389756f3e4704af9f25c56bb4cccb/artifacts/weights/best.pt"
+    tiled: false
+    imgsz: 640
+
+  - id: "yolo26n_untiled_640_ce"
+    path: "/home/rith/secure_workspace/car_defect_detection/mlruns/1/0b8ace4baec142448ce7e06434938ac2/artifacts/weights/best.pt"
+    tiled: false
+    imgsz: 640

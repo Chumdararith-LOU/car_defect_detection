@@ -52,7 +52,7 @@ def run_automated_harness(
             continue
 
         evaluated_count += 1
-        predicted_mask = router.route_image(img)
+        predicted_mask = router.route_image(img_path, imgsz=args.imgsz)[2]
         has_prediction = np.any(predicted_mask > 0)
 
         # Calculate IoU of predicted mask vs ground truth mask
