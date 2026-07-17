@@ -130,6 +130,7 @@ def main():
         loss_function = cfg.get("training", {}).get("loss_function", "ce")
         loss_type = "focal" if loss_function == "FocalCrossEntropyLoss" else "ce"
         fl_gamma = cfg.get("training", {}).get("fl_gamma", 2.0)
+        task = cfg.get("training", {}).get("task", "semantic")
     else:
         project_name = cfg.get(
             "project_name", cfg.get("project", "car_defect_detection")
@@ -142,6 +143,7 @@ def main():
 
         loss_type = cfg.get("loss_type", "ce")
         fl_gamma = cfg.get("fl_gamma", 2.0)
+        task = cfg.get("task", "segment")
 
     # 2. Resolve Dataset Configuration Path
     if args.data:
@@ -204,6 +206,7 @@ def main():
         mlflow.log_param("model_preset", model_preset)
 
         model.train(
+            task=task,
             data=dataset_path,
             epochs=epochs,
             imgsz=imgsz,
