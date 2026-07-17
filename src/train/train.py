@@ -1,13 +1,70 @@
-# src/train/train.py
-
 import os
 import argparse
 import yaml
 import mlflow
 import subprocess
 import time
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from ultralytics import YOLO
 from ultralytics import settings
+
+OriginalCrossEntropyLoss = nn.CrossEntropyLoss
+
+
+class FocalCrossEntropyLoss(OriginalCrossEntropyLoss):
+    """
+    A custom Focal Loss that disguises itself as standard CrossEntropyLoss
+    so the Ultralytics backend consumes it natively.
+    """
+
+    gamma = 2.0
+
+    def __init__(
+        self,
+        weight=None,
+        size_average=None,
+        ignore_index=-100,
+        reduce=None,
+        reduction="mean",
+        label_smoothing=0.0,
+    ):
+        super().__init__(
+            weight, size_average, ignore_index, reduce, reduction, label_smoothing
+        )
+        self.call_count = 0
+        print(
+            f"\n[🔥] FOCAL LOSS INJECTED: Overriding PyTorch CE Loss with gamma={self.gamma}\n"
+        )
+
+    def forward(self, input, target):
+        ce_loss = F.cross_entropy(
+            input,
+            target,
+            weight=self.weight,
+            ignore_index=self.ignore_index,
+            reduction="none",
+            label_smoothing=self.label_smoothing,
+        )
+        pt = torch.exp(-ce_loss)
+        modulation = (1 - pt) ** self.gamma
+        focal_loss = modulation * ce_loss
+
+        if self.call_count < 5:
+            print(
+                f"[ PATCH VERIFICATION] Step {self.call_count} | "
+                f"Mean Modulation Weight: {modulation.mean().item():.4f} | "
+                f"Mean Raw CE: {ce_loss.mean().item():.4f} | "
+                f"Mean Focal: {focal_loss.mean().item():.4f}"
+            )
+            self.call_count += 1
+
+        if self.reduction == "mean":
+            return focal_loss.mean()
+        elif self.reduction == "sum":
+            return focal_loss.sum()
+        return focal_loss
 
 
 def load_config(config_path):
@@ -59,6 +116,17 @@ def main():
     batch_size = cfg.get("batch", cfg.get("batch_size", 16))
 
     aug = cfg.get("augmentations", cfg)
+
+    loss_type = cfg.get("loss_type", "ce")
+    if loss_type == "focal":
+        FocalCrossEntropyLoss.gamma = cfg.get("fl_gamma", 2.0)
+        nn.CrossEntropyLoss = FocalCrossEntropyLoss
+        print(
+            f"[🔥] Successfully patched nn.CrossEntropyLoss to FocalCrossEntropyLoss (gamma={FocalCrossEntropyLoss.gamma})"
+        )
+    else:
+        nn.CrossEntropyLoss = OriginalCrossEntropyLoss
+        print("[ℹ] Using standard CrossEntropyLoss")
 
     print(f"Initializing architecture weights: {cfg['model_preset']}")
     model = YOLO(cfg["model_preset"])
