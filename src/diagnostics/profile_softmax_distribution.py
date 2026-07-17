@@ -48,12 +48,14 @@ def build_dynamic_evaluation_lists(images_dir, masks_dir, clean_threshold=0.001)
 
 
 def run_softmax_profiling(
-    model_path, images_dir, masks_dir, clean_threshold=0.001, limit=10
+    model_path, images_dir, masks_dir, clean_threshold=0.001, limit=10, device=None
 ):
     print("[+] Loading retrained Stage 1 Model...")
     model = YOLO(model_path, task="semantic")
     net = model.model
     net.eval()
+    if device is not None:
+        net.to(device)
     device = next(net.parameters()).device
 
     clean_tiles, defect_tiles = build_dynamic_evaluation_lists(
@@ -159,6 +161,9 @@ if __name__ == "__main__":
         default=10,
         help="Cap evaluation runs limit to speed up processing",
     )
+    parser.add_argument(
+        "--device", type=str, default=None, help="Hardware target (e.g., cuda:0)"
+    )
     args = parser.parse_args()
 
     run_softmax_profiling(
@@ -167,4 +172,5 @@ if __name__ == "__main__":
         masks_dir=args.masks_dir,
         clean_threshold=args.clean_threshold,
         limit=args.limit,
+        device=args.device,
     )
