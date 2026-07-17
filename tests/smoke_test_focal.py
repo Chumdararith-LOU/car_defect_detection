@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ultralytics import YOLO, settings
+import subprocess
+import sys
 
 OriginalCrossEntropyLoss = nn.CrossEntropyLoss
 
@@ -43,30 +44,29 @@ class FocalCrossEntropyLoss(OriginalCrossEntropyLoss):
         return focal_loss
 
 
-# Apply the patch globally
 nn.CrossEntropyLoss = FocalCrossEntropyLoss
 
 
 def run_focal_smoke_test():
-    print("[+] Disabling MLflow to prevent localhost:5000 connection timeouts...")
-    settings.update({"mlflow": False})
-
-    print("[+] Loading model for Focal Loss Smoke Test...")
-    model = YOLO("yolo26m-sem.pt", task="semantic")
-
-    print("[+] Commencing 2-Epoch Smoke Test...")
-    _ = model.train(
-        data="data/processed/sod_tiled/sod_data_tiled.yaml",
-        epochs=2,
-        batch=32,
-        imgsz=640,
-        project="Automated_Car_Defect_Stage1_SOD",
-        name="SmokeTest_FocalLoss_Patch",
-    )
-
     print(
-        "\n[✓] Smoke test complete. Training loss successfully computed using Focal Loss!"
+        "[+] Testing unified training pipeline with Focal Loss integration via fast 2-epoch run..."
     )
+
+    cmd = [
+        sys.executable,
+        "src/train/train.py",
+        "--config",
+        "configs/train/stage1-sod.yaml",
+    ]
+
+    print(f"Executing validation trace command: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=False, text=True)
+
+    if result.returncode == 0:
+        print("\n[✓] Smoke test complete. Pipeline verified successfully!")
+    else:
+        print("\n[❌] Pipeline Smoke Test Failed! Review loss patch traces.")
+        sys.exit(result.returncode)
 
 
 if __name__ == "__main__":

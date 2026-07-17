@@ -6,9 +6,19 @@ from pathlib import Path
 
 def load_dataset_config():
     """Helper fixture to parse active dataset boundaries."""
-    config_path = Path("data/processed/Experiment_v1/data.yaml")
+    yaml_env = os.getenv("DATA_YAML")
+
+    if not yaml_env:
+        pytest.skip(
+            "\n[⚠️] Skipping test: DATA_YAML environment variable is not set.\n"
+            "To run this test, specify your target dataset config path:\n"
+            "  DATA_YAML=data/processed/sod_tiled/sod_data_tiled.yaml pytest tests/test_data.py"
+        )
+
+    config_path = Path(yaml_env)
     if not config_path.exists():
-        pytest.skip("data.yaml not generated yet. Run 'make data-consolidate' first.")
+        pytest.fail(f"Configured dataset yaml does not exist at: {config_path}")
+
     with open(config_path, "r") as f:
         return yaml.safe_load(f)
 
