@@ -5,6 +5,52 @@ from ultralytics import YOLO
 from src.inference.router import get_stitched_probability_map
 
 
+def build_dynamic_evaluation_lists(images_dir, masks_dir, clean_threshold=0.001):
+    """
+    Dynamically categorizes tiles based on ground-truth mask content.
+    clean_threshold: Max allowed defect pixel ratio to be considered "clean background".
+                     0.001 means 0.1% of the tile can be defect (accounts for minor mask bleed).
+    """
+    images_path = Path(images_dir)
+    masks_path = Path(masks_dir)
+
+    clean_tiles = []
+    defect_tiles = []
+
+    # Assuming your tiled images are .png or .jpg. Adjust glob if needed.
+    for img_path in images_path.glob("*.png"):
+        # Handle both .png and .jpg mask naming conventions
+        mask_path_png = masks_path / (img_path.stem + ".png")
+        mask_path_jpg = masks_path / (img_path.stem + ".jpg")
+
+        if mask_path_png.exists():
+            mask_path = mask_path_png
+        elif mask_path_jpg.exists():
+            mask_path = mask_path_jpg
+        else:
+            continue  # Skip if no mask exists
+
+        mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
+        if mask is None:
+            continue
+
+        # Count actual defect pixels
+        defect_pixels = np.sum(mask > 0)
+        total_pixels = mask.shape[0] * mask.shape[1]
+        defect_ratio = defect_pixels / total_pixels
+
+        # Categorize based on mask, NOT filename
+        if defect_ratio <= clean_threshold:
+            clean_tiles.append(str(img_path))
+        else:
+            defect_tiles.append(str(img_path))
+
+    print(
+        f"[+] Dynamically categorized: {len(clean_tiles)} Clean Background Tiles, {len(defect_tiles)} Defect Tiles."
+    )
+    return clean_tiles, defect_tiles
+
+
 def run_softmax_profiling():
     model_weight = "runs/semantic/runs/semantic/Automated_Car_Defect_Stage1_SOD/Stage1_SOD_FocalLoss_Full/weights/best.pt"
 
@@ -14,17 +60,16 @@ def run_softmax_profiling():
     net.eval()
     device = next(net.parameters()).device
 
-    clean_tiles = [
-        "data/processed/sod_tiled/images/val/000105_t0.png",
-        "data/processed/sod_tiled/images/val/000707_t0.png",
-        "data/processed/sod_tiled/images/val/000784_t0.png",
-    ]
+    # DYNAMICALLY BUILD LISTS
+    clean_tiles, defect_tiles = build_dynamic_evaluation_lists(
+        images_dir="data/processed/sod_tiled/images/val",
+        masks_dir="data/processed/sod_tiled/masks/val",
+        clean_threshold=0.001,  # 0.1% tolerance
+    )
 
-    defect_tiles = [
-        "data/processed/sod_tiled/images/val/000552_t2.png",  # Branching crack tail
-        "data/processed/sod_tiled/images/val/003594_t1.png",  # Door scratch
-        "data/processed/sod_tiled/images/val/003074_t0.png",  # Windshield shatter
-    ]
+    # Optional: Cap the lists to a manageable number for quick profiling
+    clean_tiles = clean_tiles[:10]
+    defect_tiles = defect_tiles[:10]
 
     print("\n" + "=" * 80)
     print(" 📊 PROFILING CLEAN BACKGROUND TILES (ESTABLISHING THE NOISE FLOOR)")
