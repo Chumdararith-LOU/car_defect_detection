@@ -96,10 +96,10 @@ def run_softmax_profiling(
         probs = cv2.resize(probs, (w_orig, h_orig), interpolation=cv2.INTER_LINEAR)
 
         tile_max = float(np.max(probs))
-        tile_mean = float(np.mean(probs))
-        clean_maxes.append(tile_max)
+        tile_perc = float(np.percentile(probs, 99.9))
+        clean_maxes.append(tile_perc)
         print(
-            f" 🟢 {path.name:<15} | Peak Softmax: {tile_max:.5f} | Mean Noise: {tile_mean:.5f}"
+            f" 🟢 {path.name:<15} | Peak Softmax: {tile_max:.5f} | 99.9th Percentile: {tile_perc:.5f}"
         )
 
     print("\n" + "=" * 80)
@@ -143,7 +143,7 @@ def run_softmax_profiling(
     if clean_maxes and defect_peaks:
         max_clean_noise = max(clean_maxes)
         min_defect_signal = min(defect_peaks)
-        print(f"  Absolute Maximum Background Noise:      {max_clean_noise:.5f}")
+        print(f"  Maximum 99.9th Percentile Background Noise: {max_clean_noise:.5f}")
         print(f"  Lowest Peak Defect Signal:              {min_defect_signal:.5f}")
         print("-" * 80)
         print("  Suggested Calibration Range:")
