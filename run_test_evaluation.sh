@@ -1,5 +1,7 @@
 set -e
 
+export MLFLOW_TRACKING_URI="http://127.0.0.1:5001"
+
 echo "========================================================================"
 echo "🚀 RUNNING UNSEEN TEST SET EVALUATION ON RTX 3090 (MLFLOW LOGGED)"
 echo "========================================================================"
