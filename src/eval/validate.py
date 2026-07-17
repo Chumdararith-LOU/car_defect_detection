@@ -3,6 +3,7 @@ import os
 import yaml
 from pathlib import Path
 from src.inference.router import RawStage1Router
+from src.utils.config_helpers import load_pipeline_config
 
 
 def load_yaml(path):
@@ -57,14 +58,14 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        required=True,
-        help="Path to YOLO semantic segment weights (.pt file)",
+        default=None,
+        help="Path to YOLO weights. If not provided, it is dynamically resolved from the configuration.",
     )
     parser.add_argument(
-        "--train_config",
+        "--config",
         type=str,
-        default="configs/train/stage1-sod.yaml",
-        help="Path to training config containing gating parameters",
+        default="configs/pipeline_config.yaml",
+        help="Path to central pipeline config containing gating parameters",
     )
     parser.add_argument(
         "--splits",
@@ -80,15 +81,29 @@ def main():
     )
     args = parser.parse_args()
 
-    # 1. Load Configurations
-    train_cfg = load_yaml(args.train_config)
+    pipeline_cfg = load_pipeline_config(args.config)
     splits_cfg = load_yaml(args.splits)
 
-    gating = train_cfg.get("gating_thresholds", {})
+    gating = pipeline_cfg.get("gating_thresholds", {})
     pixel_thresh_high = gating.get("pixel_thresh_high", 0.47)
     pixel_thresh_low = gating.get("pixel_thresh_low", 0.35)
     min_cc_area = gating.get("min_cc_area", 20)
     max_cc_area_reject = gating.get("max_cc_area_reject", 5000)
+
+    imgsz = (
+        args.imgsz
+        if args.imgsz != 640
+        else pipeline_cfg.get("dataset", {}).get("imgsz", 640)
+    )
+
+    if args.model is None:
+        project_name = pipeline_cfg.get("project", {}).get(
+            "name", "car_defect_detection"
+        )
+        run_name = pipeline_cfg.get("project", {}).get("run_name", "experiment_run")
+        model_path = os.path.join(project_name, run_name, "weights", "best.pt")
+    else:
+        model_path = args.model
 
     print("=" * 85)
     print(" 🛡️  MODULAR STAGE 1 VALIDATION HARNESS (SOFTMAX ACTIVATED)")
@@ -100,36 +115,34 @@ def main():
     )
     print("=" * 85)
 
-    # 2. Instantiate Stage 1 Router
     router = RawStage1Router(
-        model_path=args.model,
+        model_path=model_path,
         pixel_thresh_high=pixel_thresh_high,
         pixel_thresh_low=pixel_thresh_low,
         min_cc_area=min_cc_area,
         max_cc_area_reject=max_cc_area_reject,
     )
 
-    # 3. Execute Evaluations
     cal_res = evaluate_set(
         router,
         splits_cfg.get("calibration_files", []),
         "Calibration Images",
         expected_outcome=True,
-        imgsz=args.imgsz,
+        imgsz=imgsz,
     )
     ho_res = evaluate_set(
         router,
         splits_cfg.get("held_out_defect_files", []),
         "Held-Out Defect Files",
         expected_outcome=True,
-        imgsz=args.imgsz,
+        imgsz=imgsz,
     )
     clean_res = evaluate_set(
         router,
         splits_cfg.get("clean_files", []),
         "Clean Background Files",
         expected_outcome=False,
-        imgsz=args.imgsz,
+        imgsz=imgsz,
     )
 
     # 4. Calculate Final Metrics

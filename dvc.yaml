@@ -1,3 +1,6 @@
+vars:
+  - configs/pipeline_config.yaml
+
 stages:
   prep_sod_data:
     cmd: python src/data/prep_sod.py
@@ -37,4 +40,18 @@ stages:
         - pipeline.fl_gamma
         - pipeline.task
     outs:
-      - car_defect_detection/stage1_focal_yolo26n_run/
+      - ${project.name}/${project.run_name}/
+
+  evaluate:
+    cmd: PYTHONPATH=. python src/eval/validate.py --config configs/pipeline_config.yaml
+    deps:
+      - src/eval/validate.py
+      - ${project.name}/${project.run_name}/
+      - configs/pipeline_config.yaml
+      - configs/data/val_splits.yaml
+    params:
+      - configs/pipeline_config.yaml:
+        - gating_thresholds.pixel_thresh_high
+        - gating_thresholds.pixel_thresh_low
+        - gating_thresholds.min_cc_area
+        - gating_thresholds.max_cc_area_reject
