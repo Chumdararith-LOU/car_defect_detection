@@ -85,4 +85,24 @@ def process_dataset(src_dir, dest_dir, overlap_frac=0.15, clean_dest=True):
 
 
 if __name__ == "__main__":
-    process_dataset("data/processed/sod", "data/processed/sod_tiled")
+    import argparse
+    from src.utils.config_helpers import load_pipeline_config
+
+    parser = argparse.ArgumentParser(description="Configurable Dataset Tiling Engine")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="configs/pipeline_config.yaml",
+        help="Path to YAML config",
+    )
+    args = parser.parse_args()
+
+    cfg = load_pipeline_config(args.config)
+
+    overlap = cfg.get("dataset", {}).get("overlap_percent", 0.15)
+
+    src_data_dir = "data/processed/sod"
+    dest_data_dir = "data/processed/sod_tiled"
+
+    print(f"[*] Initializing tiling pipeline with overlap fraction: {overlap}")
+    process_dataset(src_data_dir, dest_data_dir, overlap_frac=overlap)
