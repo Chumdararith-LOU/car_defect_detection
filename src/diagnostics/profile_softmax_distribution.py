@@ -36,7 +36,7 @@ def build_dynamic_evaluation_lists(images_dir, masks_dir, clean_threshold=0.001)
         total_pixels = mask.shape[0] * mask.shape[1]
         defect_ratio = defect_pixels / total_pixels
 
-        if defect_ratio <= clean_threshold:
+        if defect_ratio == 0:
             clean_tiles.append(str(img_path))
         else:
             defect_tiles.append(str(img_path))
