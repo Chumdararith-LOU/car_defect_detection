@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import torch
 from ultralytics import YOLO
+from src.utils.config_helpers import load_pipeline_config
 
 
 def get_stitched_probability_map(img, net, device, overlap_frac=0.15, imgsz=512):
@@ -95,6 +96,29 @@ class RawStage1Router:
         self.max_cc_area_reject = max_cc_area_reject
         self.overlap_frac = overlap_frac
 
+    @classmethod
+    def from_config(
+        cls, config_path="configs/pipeline_config.yaml", model_path_override=None
+    ):
+        """Creates a router instance directly using parameters defined in configs/pipeline_config.yaml."""
+        cfg = load_pipeline_config(config_path)
+
+        gating = cfg.get("gating_thresholds", {})
+        dataset = cfg.get("dataset", {})
+        model_cfg = cfg.get("model", {})
+
+        model_path = model_path_override or model_cfg.get("preset", "yolo26n-sem.pt")
+        overlap_val = dataset.get("overlap_percent", 0.15)
+
+        return cls(
+            model_path=model_path,
+            pixel_thresh_high=gating.get("pixel_thresh_high", 0.47),
+            pixel_thresh_low=gating.get("pixel_thresh_low", 0.35),
+            min_cc_area=gating.get("min_cc_area", 20),
+            max_cc_area_reject=gating.get("max_cc_area_reject", 5000),
+            overlap_frac=overlap_val,
+        )
+
     def get_tile_coords(self, h, w):
         """Returns coordinate bounds ((y0, y1), (x0, x1)) for 4 overlapping quadrants."""
         h_mid, w_mid = h // 2, w // 2
@@ -122,11 +146,9 @@ class RawStage1Router:
         3. Keeps only continuous regions that contain at least one anchor seed.
         4. Filters remaining structures based on minimum component pixel area.
         """
-        # Pass 1 & 2: Generate High and Low binary masks
         mask_high = (global_probs >= self.pixel_thresh_high).astype(np.uint8)
         mask_low = (global_probs >= self.pixel_thresh_low).astype(np.uint8)
 
-        # Pass 3: Label all connected structures in the low-confidence mask
         num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
             mask_low, connectivity=8
         )
@@ -175,43 +197,63 @@ class RawStage1Router:
         if img is None:
             raise FileNotFoundError(f"Could not load image at {img_path}")
 
-        # 1. Tile, infer, and stitch
         global_probs = self.predict_stitched_probabilities(img, imgsz)
 
-        # 2. Apply Two-Pass Hysteresis Gate
         final_mask = self.run_hysteresis_gate(global_probs)
 
-        # 3. Decision Gating: Router triggers Stage 2 if any defect mask survives
         has_defect = np.any(final_mask > 0)
 
         return img, global_probs, final_mask, has_defect
 
 
 if __name__ == "__main__":
-    # Test Verification block on the known target failure 000552.jpg
-    model_weight = "runs/semantic/artifacts/models/stage1_sod/weights/best.pt"
-    test_image = "data/processed/sod/val/images/000552.jpg"
+    import argparse
+    import os
 
-    # Configure router with our empirically discovered thresholds
-    router = RawStage1Router(
-        model_path=model_weight,
-        pixel_thresh_high=0.28,  # Anchor seed threshold (based on 0.322 peak Y=204 logits)
-        pixel_thresh_low=0.15,  # Path connectivity threshold (safely encapsulating 0.170 base)
-        min_cc_area=20,  # Clear background speckles
-        overlap_frac=0.15,
+    parser = argparse.ArgumentParser(description="Stage 1 Router Verification Utility")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="configs/pipeline_config.yaml",
+        help="Path to config file",
     )
+    parser.add_argument(
+        "--image",
+        type=str,
+        default="data/processed/sod/val/images/000552.jpg",
+        help="Path to test image",
+    )
+    parser.add_argument(
+        "--weights", type=str, default="yolo26n-sem.pt", help="Override weights path"
+    )
+    args = parser.parse_args()
+
+    print(f"[*] Instantiating router from config: {args.config}")
+
+    weights_path = args.weights
+    if not os.path.exists(weights_path):
+        print(
+            f"[!] Target weights not found at: {weights_path}. Defaulting to configuration defaults."
+        )
+        weights_path = None
 
     try:
-        orig_img, global_probs, final_mask, triggered = router.route_image(
-            test_image, imgsz=640
+        router = RawStage1Router.from_config(
+            config_path=args.config, model_path_override=weights_path
         )
 
-        # Create a visual overlay of the surviving hysteresis mask
+        cfg = load_pipeline_config(args.config)
+        imgsz = cfg.get("dataset", {}).get("imgsz", 640)
+
+        print(f"[*] Running router routing on image: {args.image}")
+        orig_img, global_probs, final_mask, triggered = router.route_image(
+            args.image, imgsz=imgsz
+        )
+
         overlay = orig_img.copy()
-        overlay[final_mask == 1] = [0, 255, 0]  # Draw green mask over defect
+        overlay[final_mask == 1] = [0, 255, 0]
         visualized = cv2.addWeighted(orig_img, 0.7, overlay, 0.3, 0)
 
-        # Save side-by-side comparison
         comparison = np.hstack((orig_img, visualized))
         output_path = "test_hysteresis_router_result.jpg"
         cv2.imwrite(output_path, comparison)
@@ -219,11 +261,13 @@ if __name__ == "__main__":
         print("\n" + "=" * 70)
         print(" 🎯 TWO-PASS HYSTERESIS ROUTER EVALUATION COMPLETE")
         print("=" * 70)
+        print(
+            f"Active Gating: High={router.pixel_thresh_high} | Low={router.pixel_thresh_low} | Min Area={router.min_cc_area}"
+        )
         print(f"Defect Detected / Stage 2 Triggered: {triggered}")
         print(f"Visualized side-by-side results saved to: {output_path}")
         print("=" * 70)
-        print("Open the image. You should see the ENTIRE continuous crack")
-        print("cleanly masked in green, with ZERO background shadow noise!")
+        print("Open the image to inspect the continuous crack geometry!")
         print("=" * 70 + "\n")
 
     except Exception as e:

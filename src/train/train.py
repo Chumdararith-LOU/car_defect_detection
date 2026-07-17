@@ -111,7 +111,7 @@ def main():
 
     if torch.backends.mps.is_available():
         os.environ["MLFLOW_ALLOW_FILE_STORE"] = "true"
-        mlflow_uri = "file:///./mlruns"
+        mlflow_uri = "file:./mlruns"
         print(
             "[ℹ] MacBook environment detected: Routing MLflow tracking locally to ./mlruns"
         )
