@@ -37,7 +37,7 @@ def run_softmax_profiling():
             continue
         img = cv2.imread(str(path))
         probs = get_stitched_probability_map(
-            img, net, device, overlap_frac=0.15, imgsz=1024
+            img, net, device, overlap_frac=0.15, imgsz=640
         )
 
         tile_max = float(np.max(probs))
@@ -58,7 +58,7 @@ def run_softmax_profiling():
             continue
         img = cv2.imread(str(path))
         probs = get_stitched_probability_map(
-            img, net, device, overlap_frac=0.15, imgsz=1024
+            img, net, device, overlap_frac=0.15, imgsz=640
         )
 
         tile_max = float(np.max(probs))

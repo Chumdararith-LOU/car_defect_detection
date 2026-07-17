@@ -89,7 +89,7 @@ def run_validation_harness():
         "[i] Coordinate Mapping Policy: Local Y=379 is mapped to original 1000x665 canvas."
     )
     print(
-        "    Formula: Global_Y = Y0 + (Y_local / 1024) * (Y1 - Y0) "
+        "    Formula: Global_Y = Y0 + (Y_local / 640) * (Y1 - Y0) "
         "[Correctly bound inside resizer]\n"
     )
 
@@ -102,7 +102,7 @@ def run_validation_harness():
             print(f"  [!] Skipping missing file: {f}")
             continue
         cal_evaluated += 1
-        _, _, _, detected = router.route_image(path, imgsz=1024)
+        _, _, _, detected = router.route_image(path, imgsz=640)
         if detected:
             cal_tp += 1
             print(f"  [✓] {path.name}: Defect Detected (True Positive)")
@@ -117,7 +117,7 @@ def run_validation_harness():
         if not path.exists():
             print(f"  [!] Skipping missing file: {f}")
             continue
-        _, _, _, detected = router.route_image(path, imgsz=1024)
+        _, _, _, detected = router.route_image(path, imgsz=640)
         if detected:
             ho_tp += 1
             print(f"  [✓] {path.name}: Defect Detected (True Positive)")
@@ -133,7 +133,7 @@ def run_validation_harness():
         if not path.exists():
             print(f"  [!] Skipping missing file: {f}")
             continue
-        _, _, _, detected = router.route_image(path, imgsz=1024)
+        _, _, _, detected = router.route_image(path, imgsz=640)
         if detected:
             fp += 1
             print(f"  [✗] {path.name}: False Trigger (False Positive)")
