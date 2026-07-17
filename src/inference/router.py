@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import torch
 from ultralytics import YOLO
-from src.utils.config_helpers import load_pipeline_config
+from src.utils.config_helpers import load_pipeline_config, resolve_device
 
 
 def get_stitched_probability_map(img, net, device, overlap_frac=0.15, imgsz=512):
@@ -83,12 +83,19 @@ class RawStage1Router:
         min_cc_area=20,
         max_cc_area_reject=5000,
         overlap_frac=0.15,
+        device=None,
     ):
         print(f"[+] Initializing Raw Stage 1 Router with model: {model_path}")
         self.yolo_model = YOLO(model_path, task="semantic")
         self.net = self.yolo_model.model
         self.net.eval()
-        self.device = next(self.net.parameters()).device
+
+        self.device = (
+            device if device is not None else next(self.net.parameters()).device
+        )
+
+        self.net.to(self.device)
+        print(f"[*] Stage 1 Router successfully bound to device: {self.device}")
 
         self.pixel_thresh_high = pixel_thresh_high
         self.pixel_thresh_low = pixel_thresh_low
@@ -110,6 +117,9 @@ class RawStage1Router:
         model_path = model_path_override or model_cfg.get("preset", "yolo26n-sem.pt")
         overlap_val = dataset.get("overlap_percent", 0.15)
 
+        # Resolve the active platform execution target (MPS / CUDA / CPU)
+        device = resolve_device(cfg)
+
         return cls(
             model_path=model_path,
             pixel_thresh_high=gating.get("pixel_thresh_high", 0.47),
@@ -117,6 +127,7 @@ class RawStage1Router:
             min_cc_area=gating.get("min_cc_area", 20),
             max_cc_area_reject=gating.get("max_cc_area_reject", 5000),
             overlap_frac=overlap_val,
+            device=device,
         )
 
     def get_tile_coords(self, h, w):
