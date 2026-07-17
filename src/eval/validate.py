@@ -79,14 +79,27 @@ def main():
         default=640,
         help="Inference image resolution size",
     )
+    parser.add_argument(
+        "--device", type=str, default=None, help="Hardware target (e.g., cuda:0)"
+    )
+    parser.add_argument(
+        "--high", type=float, default=None, help="Override high hysteresis threshold"
+    )
+    parser.add_argument(
+        "--low", type=float, default=None, help="Override low hysteresis threshold"
+    )
     args = parser.parse_args()
 
     pipeline_cfg = load_pipeline_config(args.config)
     splits_cfg = load_yaml(args.splits)
 
     gating = pipeline_cfg.get("gating_thresholds", {})
-    pixel_thresh_high = gating.get("pixel_thresh_high", 0.47)
-    pixel_thresh_low = gating.get("pixel_thresh_low", 0.35)
+    pixel_thresh_high = (
+        args.high if args.high is not None else gating.get("pixel_thresh_high", 0.47)
+    )
+    pixel_thresh_low = (
+        args.low if args.low is not None else gating.get("pixel_thresh_low", 0.35)
+    )
     min_cc_area = gating.get("min_cc_area", 20)
     max_cc_area_reject = gating.get("max_cc_area_reject", 5000)
 
@@ -121,6 +134,7 @@ def main():
         pixel_thresh_low=pixel_thresh_low,
         min_cc_area=min_cc_area,
         max_cc_area_reject=max_cc_area_reject,
+        device=args.device,
     )
 
     cal_res = evaluate_set(
