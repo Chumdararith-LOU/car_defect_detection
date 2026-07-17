@@ -64,8 +64,10 @@ def run_softmax_profiling(
         clean_threshold=clean_threshold,
     )
 
-    clean_tiles = clean_tiles[:limit]
-    defect_tiles = defect_tiles[:limit]
+    import random
+
+    clean_tiles = random.sample(clean_tiles, min(limit, len(clean_tiles)))
+    defect_tiles = random.sample(defect_tiles, min(limit, len(defect_tiles)))
 
     print("\n" + "=" * 80)
     print(" 📊 PROFILING CLEAN BACKGROUND TILES (ESTABLISHING THE NOISE FLOOR)")
@@ -132,7 +134,7 @@ def run_softmax_profiling(
 
         tile_max = float(np.max(probs))
         tile_90th = float(np.percentile(probs, 99.9))
-        defect_peaks.append(tile_max)
+        defect_peaks.append(tile_90th)
         print(
             f" 🔴 {path.name:<15} | Peak Softmax: {tile_max:.5f} | 99.9th Percentile: {tile_90th:.5f}"
         )
@@ -144,15 +146,25 @@ def run_softmax_profiling(
         max_clean_noise = max(clean_maxes)
         min_defect_signal = min(defect_peaks)
         print(f"  Maximum 99.9th Percentile Background Noise: {max_clean_noise:.5f}")
-        print(f"  Lowest Peak Defect Signal:              {min_defect_signal:.5f}")
+        print(f"  Lowest 99.9th Percentile Defect Signal: {min_defect_signal:.5f}")
         print("-" * 80)
-        print("  Suggested Calibration Range:")
-        print(
-            f"    - Seed Anchor (tau_high):   Must be > {max_clean_noise:.5f} but < {min_defect_signal:.5f}"
-        )
-        print(
-            "    - Pathway (tau_low):        Tuned lower to recover tails, but above mean noise."
-        )
+
+        if max_clean_noise >= min_defect_signal:
+            print("  [!] CRITICAL FAILURE: NO VALID THRESHOLD EXISTS")
+            print(
+                "      The background noise floor overlaps with or exceeds the defect signal floor."
+            )
+            print(
+                "      A linear scalar cutoff cannot cleanly separate these populations."
+            )
+        else:
+            print("  Suggested Calibration Range:")
+            print(
+                f"    - Seed Anchor (tau_high):   Must be > {max_clean_noise:.5f} but < {min_defect_signal:.5f}"
+            )
+            print(
+                "    - Pathway (tau_low):        Tuned lower to recover tails, but above mean noise."
+            )
     print("=" * 80 + "\n")
 
 
