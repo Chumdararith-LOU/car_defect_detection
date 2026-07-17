@@ -17,6 +17,7 @@ dataset:
   val_splits: "configs/data/val_splits.yaml"
   imgsz: 640
   batch_size: 16
+  overlap_percent: 0.15
 
 gating_thresholds:
   pixel_thresh_high: 0.47       # Core seed threshold for hysteresis routing

@@ -7,29 +7,34 @@ stages:
     outs:
       - data/processed/sod/
 
-  train_sod_model:
-    cmd: python src/train/train_sod.py --train_config configs/train/stage1-sod.yaml --data_config data/processed/sod/sod_data.yaml
+  tile_data:
+    cmd: PYTHONPATH=. python src/data/create_tiles.py --config configs/pipeline_config.yaml
     deps:
-      - src/train/train_sod.py
-      - configs/train/stage1-sod.yaml
+      - src/data/create_tiles.py
       - data/processed/sod/
+      - configs/pipeline_config.yaml
+    params:
+      - configs/pipeline_config.yaml:
+        - dataset.overlap_percent
     outs:
-      - artifacts/models/stage1_sod/
+      - data/processed/sod_tiled/
 
-  consolidate_data:
-    cmd: python src/data/consolidate.py --config configs/data/Experiment_v1.yaml
-    deps:
-      - src/data/consolidate.py
-      - configs/data/Experiment_v1.yaml
-      - data/raw/
-    outs:
-      - data/processed/yolo_seg/
-
-  train_model:
-    cmd: python src/train/train.py --config configs/train/yolo26n-seg.yaml
+  train:
+    cmd: PYTHONPATH=. python src/train/train.py --config configs/pipeline_config.yaml
     deps:
       - src/train/train.py
-      - configs/train/yolo26n-seg.yaml
-      - data/processed/yolo_seg/
+      - data/processed/sod_tiled/
+      - configs/pipeline_config.yaml
+    params:
+      - configs/pipeline_config.yaml:
+        - project.name
+        - project.run_name
+        - model.preset
+        - model.epochs
+        - dataset.batch_size
+        - dataset.imgsz
+        - pipeline.loss_type
+        - pipeline.fl_gamma
+        - pipeline.task
     outs:
-      - artifacts/models/yolo26n-seg/
+      - car_defect_detection/stage1_focal_yolo26n_run/

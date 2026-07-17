@@ -27,16 +27,42 @@ stages:
     deps:
     - path: data/raw/CarDD_release/CarDD_SOD/
       hash: md5
-      md5: cb720f91ee5265a2c36856036ff959c4.dir
+      md5: d23b808353f5c0ce19a2612f01011019.dir
       size: 3077738014
       nfiles: 12005
     - path: src/data/prep_sod.py
       hash: md5
-      md5: 41aea9e63876db9c61f835f65b42d17b
-      size: 3412
+      md5: 8a1ed111ffa1312c19eaad6c67b9c3fa
+      size: 3435
     outs:
     - path: data/processed/sod/
       hash: md5
-      md5: 21adeb8f62176f4df498e42d1f07cdaa.dir
-      size: 3051872783
+      md5: 7392c0bb60c533b691eb29274c28293f.dir
+      size: 3042960518
       nfiles: 8001
+  tile_data:
+    cmd: PYTHONPATH=. python src/data/create_tiles.py --config
+      configs/pipeline_config.yaml
+    deps:
+    - path: configs/pipeline_config.yaml
+      hash: md5
+      md5: 658155d59c44ad3d191442eb674c5bc2
+      size: 1105
+    - path: data/processed/sod/
+      hash: md5
+      md5: 7392c0bb60c533b691eb29274c28293f.dir
+      size: 3042960518
+      nfiles: 8001
+    - path: src/data/create_tiles.py
+      hash: md5
+      md5: 08f7bd35d4a2f45b2e4173a34616fef2
+      size: 3499
+    params:
+      configs/pipeline_config.yaml:
+        dataset.overlap_percent: 0.15
+    outs:
+    - path: data/processed/sod_tiled/
+      hash: md5
+      md5: b6c447ff9319e6e7cadb26594603b87d.dir
+      size: 7416048402
+      nfiles: 32001
