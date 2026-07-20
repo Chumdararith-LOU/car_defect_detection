@@ -5,7 +5,7 @@ from pathlib import Path
 
 def diagnostic_downscale_survival_v2(
     mask_dir,
-    target_size=(320, 320),
+    target_size=(640, 640),
     threshold=0.70,
     sample_percentile=10,
     n_samples=100,

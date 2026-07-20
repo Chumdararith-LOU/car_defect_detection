@@ -67,21 +67,17 @@ class RawStage1Router:
     """
     A high-fidelity Stage 1 Router that bypasses YOLO's post-processing API.
 
-    This router:
-      1. Slices full-resolution images into overlapping quadrants.
-      2. Runs raw-logits inference on each quadrant at training resolution (imgsz).
-      3. Scales and coordinate-stitches tile probabilities into a global map.
-      4. Applies a two-pass Hysteresis Thresholding Gate to recover low-confidence,
-         continuous defect structures while rejecting unseeded background noise.
+    This router transitions to relative argmax channel selection, ensuring compatibility
+    with native training outputs while preserving the resolution-saving tiling layer.
     """
 
     def __init__(
         self,
         model_path,
-        pixel_thresh_high=0.47,
-        pixel_thresh_low=0.35,
-        min_cc_area=20,
-        max_cc_area_reject=5000,
+        pixel_thresh_high=0.5,
+        pixel_thresh_low=0.5,
+        min_cc_area=0,
+        max_cc_area_reject=9999999,
         overlap_frac=0.15,
         device=None,
     ):
@@ -122,10 +118,10 @@ class RawStage1Router:
 
         return cls(
             model_path=model_path,
-            pixel_thresh_high=gating.get("pixel_thresh_high", 0.47),
-            pixel_thresh_low=gating.get("pixel_thresh_low", 0.35),
-            min_cc_area=gating.get("min_cc_area", 20),
-            max_cc_area_reject=gating.get("max_cc_area_reject", 5000),
+            pixel_thresh_high=gating.get("pixel_thresh_high", 0.5),
+            pixel_thresh_low=gating.get("pixel_thresh_low", 0.5),
+            min_cc_area=gating.get("min_cc_area", 0),
+            max_cc_area_reject=gating.get("max_cc_area_reject", 9999999),
             overlap_frac=overlap_val,
             device=device,
         )
@@ -150,56 +146,11 @@ class RawStage1Router:
 
     def run_hysteresis_gate(self, global_probs):
         """
-        Executes Two-Pass Hysteresis Gating on the global probability map.
-
-        1. Identifies high-confidence anchor seeds.
-        2. Extracted continuous potential pathways.
-        3. Keeps only continuous regions that contain at least one anchor seed.
-        4. Filters remaining structures based on minimum component pixel area.
+        Executes relative argmax channel selection on the global probability map.
+        In a competitive 2-class softmax space, a target pixel belongs to a defect
+        whenever its channel value outcompetes the background channel (probs > 0.5).
         """
-        mask_high = (global_probs >= self.pixel_thresh_high).astype(np.uint8)
-        mask_low = (global_probs >= self.pixel_thresh_low).astype(np.uint8)
-
-        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
-            mask_low, connectivity=8
-        )
-
-        gated_mask = np.zeros_like(mask_low)
-
-        for i in range(1, num_labels):
-            component_pixels = labels == i
-            has_seed = np.any(mask_high[component_pixels] > 0)
-
-            if has_seed:
-                gated_mask[component_pixels] = 1
-
-        num_labels_filtered, labels_filtered, stats_filtered, _ = (
-            cv2.connectedComponentsWithStats(gated_mask, connectivity=8)
-        )
-        final_mask = np.zeros_like(gated_mask)
-
-        for i in range(1, num_labels_filtered):
-            area = stats_filtered[i, cv2.CC_STAT_AREA]
-
-            if area < self.min_cc_area:
-                continue
-
-            if area > self.max_cc_area_reject:
-                continue
-
-            x, y, w, h_box, _ = stats_filtered[i]
-
-            if area <= 120:
-                aspect_ratio = (
-                    max(float(h_box) / w, float(w) / h_box)
-                    if (w > 0 and h_box > 0)
-                    else 0
-                )
-                if aspect_ratio < 2.0:
-                    continue
-
-            final_mask[labels_filtered == i] = 1
-
+        final_mask = (global_probs > 0.5).astype(np.uint8)
         return final_mask
 
     def route_image(self, img_path, imgsz):
@@ -266,19 +217,14 @@ if __name__ == "__main__":
         visualized = cv2.addWeighted(orig_img, 0.7, overlay, 0.3, 0)
 
         comparison = np.hstack((orig_img, visualized))
-        output_path = "test_hysteresis_router_result.jpg"
+        output_path = "test_argmax_router_result.jpg"
         cv2.imwrite(output_path, comparison)
 
         print("\n" + "=" * 70)
-        print(" 🎯 TWO-PASS HYSTERESIS ROUTER EVALUATION COMPLETE")
+        print(" 🎯 RELATIVE ARGMAX ROUTER EVALUATION COMPLETE")
         print("=" * 70)
-        print(
-            f"Active Gating: High={router.pixel_thresh_high} | Low={router.pixel_thresh_low} | Min Area={router.min_cc_area}"
-        )
         print(f"Defect Detected / Stage 2 Triggered: {triggered}")
         print(f"Visualized side-by-side results saved to: {output_path}")
-        print("=" * 70)
-        print("Open the image to inspect the continuous crack geometry!")
         print("=" * 70 + "\n")
 
     except Exception as e:
