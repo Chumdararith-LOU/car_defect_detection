@@ -8,8 +8,7 @@ from src.utils.config_helpers import load_pipeline_config, resolve_device
 def get_stitched_probability_map(img, net, device, overlap_frac=0.15, imgsz=512):
     """
     Consolidated mathematical utility for slicing, raw inference,
-    dynamic channel activation (Sigmoid/Softmax), and coordinate stitching.
-    This guarantees identical probability space across training, profiling, and routing.
+    and coordinate stitching across the competitive probability space.
     """
     h_orig, w_orig = img.shape[:2]
     global_probs = np.zeros((h_orig, w_orig), dtype=np.float32)
@@ -65,22 +64,11 @@ def get_stitched_probability_map(img, net, device, overlap_frac=0.15, imgsz=512)
 
 class RawStage1Router:
     """
-    A high-fidelity Stage 1 Router that bypasses YOLO's post-processing API.
-
-    This router transitions to relative argmax channel selection, ensuring compatibility
-    with native training outputs while preserving the resolution-saving tiling layer.
+    A high-fidelity Stage 1 Router that uses relative argmax channel selection
+    to natively extract micro-defects and large structural anomalies.
     """
 
-    def __init__(
-        self,
-        model_path,
-        pixel_thresh_high=0.5,
-        pixel_thresh_low=0.5,
-        min_cc_area=0,
-        max_cc_area_reject=9999999,
-        overlap_frac=0.15,
-        device=None,
-    ):
+    def __init__(self, model_path, overlap_frac=0.15, device=None):
         print(f"[+] Initializing Raw Stage 1 Router with model: {model_path}")
         self.yolo_model = YOLO(model_path, task="semantic")
         self.net = self.yolo_model.model
@@ -92,11 +80,6 @@ class RawStage1Router:
 
         self.net.to(self.device)
         print(f"[*] Stage 1 Router successfully bound to device: {self.device}")
-
-        self.pixel_thresh_high = pixel_thresh_high
-        self.pixel_thresh_low = pixel_thresh_low
-        self.min_cc_area = min_cc_area
-        self.max_cc_area_reject = max_cc_area_reject
         self.overlap_frac = overlap_frac
 
     @classmethod
@@ -105,23 +88,15 @@ class RawStage1Router:
     ):
         """Creates a router instance directly using parameters defined in configs/pipeline_config.yaml."""
         cfg = load_pipeline_config(config_path)
-
-        gating = cfg.get("gating_thresholds", {})
         dataset = cfg.get("dataset", {})
         model_cfg = cfg.get("model", {})
 
         model_path = model_path_override or model_cfg.get("preset", "yolo26n-sem.pt")
         overlap_val = dataset.get("overlap_percent", 0.15)
-
-        # Resolve the active platform execution target (MPS / CUDA / CPU)
         device = resolve_device(cfg)
 
         return cls(
             model_path=model_path,
-            pixel_thresh_high=gating.get("pixel_thresh_high", 0.5),
-            pixel_thresh_low=gating.get("pixel_thresh_low", 0.5),
-            min_cc_area=gating.get("min_cc_area", 0),
-            max_cc_area_reject=gating.get("max_cc_area_reject", 9999999),
             overlap_frac=overlap_val,
             device=device,
         )
@@ -145,11 +120,7 @@ class RawStage1Router:
         )
 
     def run_hysteresis_gate(self, global_probs):
-        """
-        Executes relative argmax channel selection on the global probability map.
-        In a competitive 2-class softmax space, a target pixel belongs to a defect
-        whenever its channel value outcompetes the background channel (probs > 0.5).
-        """
+        """Executes relative argmax decision mapping (winner-takes-all via > 0.5 threshold)."""
         final_mask = (global_probs > 0.5).astype(np.uint8)
         return final_mask
 

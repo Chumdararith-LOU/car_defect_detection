@@ -19,12 +19,6 @@ dataset:
   batch_size: 16
   overlap_percent: 0.15
 
-gating_thresholds:
-  pixel_thresh_high: 0.47       # Core seed threshold for hysteresis routing
-  pixel_thresh_low: 0.35        # Pathway boundary tracing threshold
-  min_cc_area: 20               # Minimum pixel cluster component size
-  max_cc_area_reject: 5000      # Upper bound anomaly filter bounds
-
 model:
   preset: "yolo26n-sem.pt"       # Target model architecture weights
   epochs: 50

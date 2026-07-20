@@ -53,7 +53,7 @@ def evaluate_set(router, file_paths, set_name, expected_outcome=True, imgsz=640)
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Modular Stage 1 Dual-Threshold Hysteresis Validation Harness"
+        description="Modular Stage 1 Native Argmax Validation Harness"
     )
     parser.add_argument(
         "--model",
@@ -82,26 +82,10 @@ def main():
     parser.add_argument(
         "--device", type=str, default=None, help="Hardware target (e.g., cuda:0)"
     )
-    parser.add_argument(
-        "--high", type=float, default=None, help="Override high hysteresis threshold"
-    )
-    parser.add_argument(
-        "--low", type=float, default=None, help="Override low hysteresis threshold"
-    )
     args = parser.parse_args()
 
     pipeline_cfg = load_pipeline_config(args.config)
     splits_cfg = load_yaml(args.splits)
-
-    gating = pipeline_cfg.get("gating_thresholds", {})
-    pixel_thresh_high = (
-        args.high if args.high is not None else gating.get("pixel_thresh_high", 0.47)
-    )
-    pixel_thresh_low = (
-        args.low if args.low is not None else gating.get("pixel_thresh_low", 0.35)
-    )
-    min_cc_area = gating.get("min_cc_area", 20)
-    max_cc_area_reject = gating.get("max_cc_area_reject", 5000)
 
     imgsz = (
         args.imgsz
@@ -119,21 +103,14 @@ def main():
         model_path = args.model
 
     print("=" * 85)
-    print(" 🛡️  MODULAR STAGE 1 VALIDATION HARNESS (SOFTMAX ACTIVATED)")
+    print(" 🛡️  MODULAR STAGE 1 VALIDATION HARNESS (ARGMAX COMPETITIVE)")
     print("=" * 85)
-    print(f"[i] Model:              {args.model}")
-    print(f"[i] Gating Parameters:  high={pixel_thresh_high}, low={pixel_thresh_low}")
-    print(
-        f"                        min_area={min_cc_area}, max_area_reject={max_cc_area_reject}"
-    )
+    print(f"[i] Model:              {model_path}")
+    print(f"[i] Target Resolution:  {imgsz}x{imgsz}")
     print("=" * 85)
 
     router = RawStage1Router(
         model_path=model_path,
-        pixel_thresh_high=pixel_thresh_high,
-        pixel_thresh_low=pixel_thresh_low,
-        min_cc_area=min_cc_area,
-        max_cc_area_reject=max_cc_area_reject,
         device=args.device,
     )
 
@@ -179,8 +156,7 @@ def main():
     print("=" * 85)
     print(f"  Calibration Recall (n={cal_evaluated}):      {cal_recall:.2f}%")
     print(
-        f"  Held-Out Recall (n={ho_total}):          {held_out_recall:.2f}%  "
-        "<-- REAL Performance"
+        f"  Held-Out Recall (n={ho_total}):          {held_out_recall:.2f}%  <-- REAL Performance"
     )
     print(f"  Aggregate Recall (n={agg_total}):        {aggregate_recall:.2f}%")
     print(f"  False Positive Rate (n={clean_total}):     {fpr:.2f}%")
