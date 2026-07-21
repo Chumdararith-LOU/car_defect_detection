@@ -127,8 +127,9 @@ def collect_and_parse_pools(coco_json_paths, class_mapping, config):
                         normalized_coords.append(f"{ny:.6f}")
 
                     yolo_lines.append(f"{class_idx} " + " ".join(normalized_coords))
-                    target_class_name = config["target_classes"][class_idx]
-                    detected_classes_in_image.add(target_class_name)
+
+                    standard_class = config["target_classes"][class_idx]
+                    detected_classes_in_image.add(standard_class)
 
             if yolo_lines:
                 primary_class = sorted(list(detected_classes_in_image))[0]
@@ -211,12 +212,13 @@ def parse_supervisely_dataset(supervisely_paths, class_mapping, config, split_po
                     normalized_coords.append(f"{ny:.6f}")
 
                 yolo_lines.append(f"{class_idx} " + " ".join(normalized_coords))
-                detected_classes_in_image.add(raw_label)
+
+                standard_class = config["target_classes"][class_idx]
+                detected_classes_in_image.add(standard_class)
                 total_extracted_polygons += 1
 
             if yolo_lines:
                 primary_class = sorted(list(detected_classes_in_image))[0]
-                # Store temporarily to allow shuffling before assignment
                 all_valid_items.append(
                     {
                         "primary_class": primary_class,
@@ -228,11 +230,9 @@ def parse_supervisely_dataset(supervisely_paths, class_mapping, config, split_po
                     }
                 )
 
-    # Shuffle the aggregated dataset for a random, unbiased split
-    random.seed(42)  # Set seed to ensure identical splits across repeated pipeline runs
+    random.seed(42)
     random.shuffle(all_valid_items)
 
-    # Calculate partition indices for 80/10/10
     total_images = len(all_valid_items)
     train_end = int(total_images * 0.8)
     val_end = int(total_images * 0.9)
@@ -241,7 +241,6 @@ def parse_supervisely_dataset(supervisely_paths, class_mapping, config, split_po
     val_items = all_valid_items[train_end:val_end]
     test_items = all_valid_items[val_end:]
 
-    # Inject partitioned items into the main YOLO split pools
     for item in train_items:
         split_pools["train"][item["primary_class"]].append(item["payload"])
     for item in val_items:
