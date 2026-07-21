@@ -151,8 +151,14 @@ def parse_supervisely_dataset(supervisely_paths, class_mapping, config, split_po
             print(f"[-] Missing Supervisely dataset for {split}: {dataset_root}")
             continue
 
-        # Locate all .json files in ann/ directories (handles Supervisely's per-image JSON structure)
-        ann_files = list(dataset_root.rglob("ann/*.json"))
+        # Fix #1: Safer globbing pattern
+        ann_files = [p for p in dataset_root.rglob("*.json") if p.parent.name == "ann"]
+        print(
+            f"    -> Found {len(ann_files)} annotation files in '{dataset_root.name}'"
+        )
+
+        valid_images_found = 0
+        added_instances = 0
 
         for ann_file in ann_files:
             # Reconstruct the source image path
@@ -160,9 +166,16 @@ def parse_supervisely_dataset(supervisely_paths, class_mapping, config, split_po
             img_dir = ann_file.parent.parent / "img"
             src_img_path = img_dir / img_name
 
+            # Fix #2: Handle image extension mismatches (e.g. .png in JSON but .jpg on disk)
             if not src_img_path.exists():
-                continue
+                base_name = Path(img_name).stem
+                possible_images = list(img_dir.glob(f"{base_name}.*"))
+                if possible_images:
+                    src_img_path = possible_images[0]
+                else:
+                    continue
 
+            valid_images_found += 1
             with open(ann_file, "r") as f:
                 ann_data = json.load(f)
 
@@ -179,12 +192,14 @@ def parse_supervisely_dataset(supervisely_paths, class_mapping, config, split_po
                 class_idx = class_mapping[raw_label]
                 geom_type = obj.get("geometryType")
 
-                # We only want polygon instances for segmentation
                 if geom_type != "polygon":
                     continue
 
                 exterior = obj.get("points", {}).get("exterior", [])
-                if len(exterior) < config.get("min_polygon_points", 6):
+
+                # Fix #3: Supervisely stores [x,y] pairs. 3 pairs = 6 flat coordinates.
+                min_pairs = config.get("min_polygon_points", 6) / 2
+                if len(exterior) < min_pairs:
                     continue
 
                 normalized_coords = []
@@ -199,6 +214,7 @@ def parse_supervisely_dataset(supervisely_paths, class_mapping, config, split_po
 
                 yolo_lines.append(f"{class_idx} " + " ".join(normalized_coords))
                 detected_classes_in_image.add(raw_label)
+                added_instances += 1
 
             if yolo_lines:
                 primary_class = sorted(list(detected_classes_in_image))[0]
@@ -209,6 +225,9 @@ def parse_supervisely_dataset(supervisely_paths, class_mapping, config, split_po
                         "ext": src_img_path.suffix,
                     }
                 )
+
+        print(f"    -> Successfully paired {valid_images_found} images.")
+        print(f"    -> Extracted {added_instances} valid polygons.")
 
 
 def balance_and_write_dataset(split_pools, processed_dir, target_classes):
