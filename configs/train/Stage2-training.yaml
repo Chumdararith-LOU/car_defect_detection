@@ -1,0 +1,33 @@
+# Task Meta
+task: segment
+loss_type: focal
+fl_gamma: 2.0
+model_preset: yolo26m-seg.pt
+project_name: car_defect_detection
+run_name: yolo26m_1024_stage2_baseline
+
+# Dataset Paths
+dataset_config: "data/processed/stage2/data.yaml"
+
+epochs: 60
+imgsz: 1024
+batch_size: 8
+device: 0
+workers: 8
+amp: false
+freeze: 15
+lr0: 0.01
+lrf: 0.01
+
+augmentations:
+  hsv_h: 0.03
+  hsv_s: 0.7
+  hsv_v: 0.5
+  degrees: 10.0
+  scale: 0.5
+  perspective: 0.0005
+  fliplr: 0.5
+  mosaic: 0.5
+  mixup: 0.0
+  erasing: 0.4
+  close_mosaic: 20

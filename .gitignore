@@ -48,5 +48,4 @@ _build/
 
 runs/
 
-src/CarDD.ipynb
-src/inspect_datasets.ipynb
+src/Diagnost/
