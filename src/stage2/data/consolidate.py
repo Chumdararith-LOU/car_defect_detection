@@ -141,6 +141,76 @@ def collect_and_parse_pools(coco_json_paths, class_mapping, config):
     return split_pools
 
 
+def parse_supervisely_dataset(supervisely_paths, class_mapping, config, split_pools):
+    """Scans Supervisely datasets and adds them to the existing split pools."""
+    print("[+] Parsing Supervisely JSON files from config...")
+
+    for split, dataset_root_str in supervisely_paths.items():
+        dataset_root = Path(dataset_root_str)
+        if not dataset_root.exists():
+            print(f"[-] Missing Supervisely dataset for {split}: {dataset_root}")
+            continue
+
+        # Locate all .json files in ann/ directories (handles Supervisely's per-image JSON structure)
+        ann_files = list(dataset_root.rglob("ann/*.json"))
+
+        for ann_file in ann_files:
+            # Reconstruct the source image path
+            img_name = ann_file.name.replace(".json", "")
+            img_dir = ann_file.parent.parent / "img"
+            src_img_path = img_dir / img_name
+
+            if not src_img_path.exists():
+                continue
+
+            with open(ann_file, "r") as f:
+                ann_data = json.load(f)
+
+            img_h, img_w = ann_data["size"]["height"], ann_data["size"]["width"]
+            yolo_lines = []
+            detected_classes_in_image = set()
+
+            for obj in ann_data.get("objects", []):
+                raw_label = obj.get("classTitle")
+
+                if raw_label not in class_mapping:
+                    continue
+
+                class_idx = class_mapping[raw_label]
+                geom_type = obj.get("geometryType")
+
+                # We only want polygon instances for segmentation
+                if geom_type != "polygon":
+                    continue
+
+                exterior = obj.get("points", {}).get("exterior", [])
+                if len(exterior) < config.get("min_polygon_points", 6):
+                    continue
+
+                normalized_coords = []
+                for pt in exterior:
+                    nx = pt[0] / img_w
+                    ny = pt[1] / img_h
+                    if config.get("clip_coordinates", True):
+                        nx = max(0.0, min(1.0, nx))
+                        ny = max(0.0, min(1.0, ny))
+                    normalized_coords.append(f"{nx:.6f}")
+                    normalized_coords.append(f"{ny:.6f}")
+
+                yolo_lines.append(f"{class_idx} " + " ".join(normalized_coords))
+                detected_classes_in_image.add(raw_label)
+
+            if yolo_lines:
+                primary_class = sorted(list(detected_classes_in_image))[0]
+                split_pools[split][primary_class].append(
+                    {
+                        "src_path": src_img_path,
+                        "lines": yolo_lines,
+                        "ext": src_img_path.suffix,
+                    }
+                )
+
+
 def balance_and_write_dataset(split_pools, processed_dir, target_classes):
     """Applies class balancing caps and saves assets sequentially."""
     print("\n[⚙] Enforcing image-level balancing rules & archiving files...")
@@ -225,6 +295,10 @@ def main():
 
     pools = collect_and_parse_pools(coco_json_paths, class_mapping, config)
 
+    supervisely_paths = config.get("supervisely_paths", {})
+    if supervisely_paths:
+        parse_supervisely_dataset(supervisely_paths, class_mapping, config, pools)
+
     mask_stats, img_stats, total_images = balance_and_write_dataset(
         pools, processed_dir, target_classes
     )
@@ -262,5 +336,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# hellp

@@ -5,6 +5,8 @@ coco_json_paths:
   train: "data/raw/CarDD_release/CarDD_COCO/annotations/instances_train2017.json"
   val: "data/raw/CarDD_release/CarDD_COCO/annotations/instances_val2017.json"
   test: "data/raw/CarDD_release/CarDD_COCO/annotations/instances_test2017.json"
+supervisely_paths:
+  train: "data/raw/archive/Car parts dataset"
 
 # Explicit 7-Class Target Taxonomy
 target_classes:
