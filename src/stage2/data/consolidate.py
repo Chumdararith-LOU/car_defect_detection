@@ -58,88 +58,94 @@ def collect_and_parse_pools(coco_json_paths, class_mapping, config):
     }
     print("[+] Parsing COCO JSON files from config...")
 
-    for split, json_path_str in coco_json_paths.items():
-        json_file = Path(json_path_str)
-        if not json_file.exists():
-            print(f"[-] Missing JSON for {split}: {json_file}")
-            continue
+    for split, paths in coco_json_paths.items():
+        # Enforce list structure to support multiple datasets per split
+        if isinstance(paths, str):
+            paths = [paths]
 
-        split_dir = json_file.parent
-        with open(json_file, "r") as f:
-            coco_data = json.load(f)
-
-        categories = {cat["id"]: cat["name"] for cat in coco_data.get("categories", [])}
-        images = {img["id"]: img for img in coco_data.get("images", [])}
-
-        img_to_anns = defaultdict(list)
-        for ann in coco_data.get("annotations", []):
-            img_to_anns[ann["image_id"]].append(ann)
-
-        for img_id, anns in img_to_anns.items():
-            img_info = images[img_id]
-            src_img_path = split_dir / img_info["file_name"]
-
-            # COCO standard directory structure fallback (e.g., train2017)
-            if not src_img_path.exists():
-                fallback_dir = json_file.parent.parent / f"{split}2017"
-                src_img_path = fallback_dir / img_info["file_name"]
-
-            if not src_img_path.exists():
+        for json_path_str in paths:
+            json_file = Path(json_path_str)
+            if not json_file.exists():
+                print(f"[-] Missing JSON for {split}: {json_file}")
                 continue
 
-            yolo_lines = []
-            detected_classes_in_image = set()
+            split_dir = json_file.parent
+            with open(json_file, "r") as f:
+                coco_data = json.load(f)
 
-            for ann in anns:
-                raw_label = categories.get(ann["category_id"])
+            categories = {
+                cat["id"]: cat["name"] for cat in coco_data.get("categories", [])
+            }
+            images = {img["id"]: img for img in coco_data.get("images", [])}
 
-                # Use our direct class mapping from the YAML
-                if raw_label not in class_mapping:
+            img_to_anns = defaultdict(list)
+            for ann in coco_data.get("annotations", []):
+                img_to_anns[ann["image_id"]].append(ann)
+
+            for img_id, anns in img_to_anns.items():
+                img_info = images[img_id]
+                src_img_path = split_dir / img_info["file_name"]
+
+                # COCO standard directory structure fallback (e.g., train2017)
+                if not src_img_path.exists():
+                    fallback_dir = json_file.parent.parent / f"{split}2017"
+                    src_img_path = fallback_dir / img_info["file_name"]
+
+                if not src_img_path.exists():
                     continue
 
-                class_idx = class_mapping[raw_label]
+                yolo_lines = []
+                detected_classes_in_image = set()
 
-                img_w, img_h = img_info["width"], img_info["height"]
+                for ann in anns:
+                    raw_label = categories.get(ann["category_id"])
 
-                segmentations = ann.get("segmentation", [])
-                if not segmentations or len(segmentations) == 0:
-                    if "bbox" in ann:
-                        bx, by, bw, bh = ann["bbox"]
-                        segmentations = [
-                            [bx, by, bx + bw, by, bx + bw, by + bh, bx, by + bh]
-                        ]
-                    else:
+                    if raw_label not in class_mapping:
                         continue
 
-                min_points = config.get("min_polygon_points", 6)
+                    class_idx = class_mapping[raw_label]
+                    img_w, img_h = img_info["width"], img_info["height"]
 
-                for seg in segmentations:
-                    if len(seg) < min_points:
-                        continue
-                    normalized_coords = []
-                    for i in range(0, len(seg), 2):
-                        nx = seg[i] / img_w
-                        ny = seg[i + 1] / img_h
-                        if config.get("clip_coordinates", True):
-                            nx = max(0.0, min(1.0, nx))
-                            ny = max(0.0, min(1.0, ny))
-                        normalized_coords.append(f"{nx:.6f}")
-                        normalized_coords.append(f"{ny:.6f}")
+                    segmentations = ann.get("segmentation", [])
+                    if not segmentations or len(segmentations) == 0:
+                        if "bbox" in ann:
+                            bx, by, bw, bh = ann["bbox"]
+                            segmentations = [
+                                [bx, by, bx + bw, by, bx + bw, by + bh, bx, by + bh]
+                            ]
+                        else:
+                            continue
 
-                    yolo_lines.append(f"{class_idx} " + " ".join(normalized_coords))
+                    min_points = config.get("min_polygon_points", 6)
 
-                    standard_class = config["target_classes"][class_idx]
-                    detected_classes_in_image.add(standard_class)
+                    for seg in segmentations:
+                        if len(seg) < min_points:
+                            continue
+                        normalized_coords = []
+                        for i in range(0, len(seg), 2):
+                            nx = seg[i] / img_w
+                            ny = seg[i + 1] / img_h
+                            if config.get("clip_coordinates", True):
+                                nx = max(0.0, min(1.0, nx))
+                                ny = max(0.0, min(1.0, ny))
+                            normalized_coords.append(f"{nx:.6f}")
+                            normalized_coords.append(f"{ny:.6f}")
 
-            if yolo_lines:
-                primary_class = sorted(list(detected_classes_in_image))[0]
-                split_pools[split][primary_class].append(
-                    {
-                        "src_path": src_img_path,
-                        "lines": yolo_lines,
-                        "ext": os.path.splitext(img_info["file_name"])[1],
-                    }
-                )
+                        yolo_lines.append(f"{class_idx} " + " ".join(normalized_coords))
+
+                        # Translate raw label to standard taxonomy
+                        standard_class = config["target_classes"][class_idx]
+                        detected_classes_in_image.add(standard_class)
+
+                if yolo_lines:
+                    primary_class = sorted(list(detected_classes_in_image))[0]
+                    split_pools[split][primary_class].append(
+                        {
+                            "src_path": src_img_path,
+                            "lines": yolo_lines,
+                            "ext": os.path.splitext(img_info["file_name"])[1],
+                        }
+                    )
     return split_pools
 
 

@@ -1,0 +1,73 @@
+# configs/data/stage2/stage2_custom_only.yaml
+output_processed_dir: "data/processed/stage2_custom"
+
+# Passing lists of Roboflow COCO annotations per split
+coco_json_paths:
+  train:
+    - "data/raw/Roboflow/Car defect detection.v6i.coco/train/_annotations.coco.json"
+    - "data/raw/Roboflow/Rust Detection.v1i.coco/train/_annotations.coco.json"
+    - "data/raw/Roboflow/car damage.v1i.coco/train/_annotations.coco.json"
+    - "data/raw/Roboflow/crackbird detection 3.v6-v1.coco/train/_annotations.coco.json"
+    - "data/raw/Roboflow/scarcth_2.v9i.coco/train/_annotations.coco.json"
+    - "data/raw/Roboflow/socarC.v1i.coco/train/_annotations.coco.json"
+  val:
+    - "data/raw/Roboflow/Car defect detection.v6i.coco/valid/_annotations.coco.json"
+    - "data/raw/Roboflow/Rust Detection.v1i.coco/valid/_annotations.coco.json"
+    - "data/raw/Roboflow/car damage.v1i.coco/valid/_annotations.coco.json"
+    - "data/raw/Roboflow/crackbird detection 3.v6-v1.coco/valid/_annotations.coco.json"
+    - "data/raw/Roboflow/scarcth_2.v9i.coco/valid/_annotations.coco.json"
+    - "data/raw/Roboflow/socarC.v1i.coco/valid/_annotations.coco.json"
+  test:
+    - "data/raw/Roboflow/Car defect detection.v6i.coco/test/_annotations.coco.json"
+    - "data/raw/Roboflow/Rust Detection.v1i.coco/test/_annotations.coco.json"
+    - "data/raw/Roboflow/car damage.v1i.coco/test/_annotations.coco.json"
+    - "data/raw/Roboflow/crackbird detection 3.v6-v1.coco/test/_annotations.coco.json"
+    - "data/raw/Roboflow/scarcth_2.v9i.coco/test/_annotations.coco.json"
+    - "data/raw/Roboflow/socarC.v1i.coco/test/_annotations.coco.json"
+
+target_classes:
+  - "dent"
+  - "scratch"
+  - "crack"
+  - "glass_shatter"
+  - "broken_component"
+  - "missing_component"
+  - "corrosion"
+
+class_mapping:
+  # Car defect detection.v6i
+  "Dent": 0
+  "Glass-Break": 3
+  "Scratch": 1
+
+  # Rust Detection.v1i
+  "Rust": 6
+  "copper corrosion": 6
+  "corroded-part": 6
+  "corrosion": 6
+  "iron rust": 6
+  "mild-corrosion": 6
+  "moderate-corrosion": 6
+  "rust": 6
+  "severe-corrosion": 6
+
+  # car damage.v1i
+  "break": 4
+  "crush": 0
+  "scratch": 1
+  "separation": 5
+
+  # crackbird detection 3.v6-v1
+  "Cracked": 2
+
+  # scarcth_2.v9i
+  "dent": 0
+
+  # socarC.v1i
+  "Breakage": 4
+  "Crushed": 0
+  "Scratched": 1
+  "Separated": 5
+
+min_polygon_points: 6
+clip_coordinates: true

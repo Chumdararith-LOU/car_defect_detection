@@ -32,6 +32,8 @@ class_mapping:
   "Missing part": 5
   "Broken part": 4
   "Corrosion": 6
+  "Paint chip": 1
+  "Flaking": 1
 
 min_polygon_points: 6
 clip_coordinates: true
