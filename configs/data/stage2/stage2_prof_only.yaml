@@ -1,0 +1,30 @@
+output_processed_dir: "data/processed/stage2"
+
+# Step 1: Testing baseline CarDD COCO first
+coco_json_paths:
+  train: "data/raw/CarDD_release/CarDD_COCO/annotations/instances_train2017.json"
+  val: "data/raw/CarDD_release/CarDD_COCO/annotations/instances_val2017.json"
+  test: "data/raw/CarDD_release/CarDD_COCO/annotations/instances_test2017.json"
+
+# Explicit 7-Class Target Taxonomy
+target_classes:
+  - "dent"
+  - "scratch"
+  - "crack"
+  - "glass_shatter"
+  - "broken_component"
+  - "missing_component"
+  - "corrosion"
+
+# String-to-Integer mapping
+class_mapping:
+  # === 1. CarDD COCO Source ===
+  "dent": 0
+  "scratch": 1
+  "crack": 2
+  "glass shatter": 3
+  "lamp broken": 4
+  # 'tire flat' explicitly omitted to prevent data corruption
+
+min_polygon_points: 6
+clip_coordinates: true
