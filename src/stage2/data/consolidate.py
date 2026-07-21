@@ -78,6 +78,12 @@ def collect_and_parse_pools(coco_json_paths, class_mapping, config):
         for img_id, anns in img_to_anns.items():
             img_info = images[img_id]
             src_img_path = split_dir / img_info["file_name"]
+
+            # COCO standard directory structure fallback (e.g., train2017)
+            if not src_img_path.exists():
+                fallback_dir = json_file.parent.parent / f"{split}2017"
+                src_img_path = fallback_dir / img_info["file_name"]
+
             if not src_img_path.exists():
                 continue
 
