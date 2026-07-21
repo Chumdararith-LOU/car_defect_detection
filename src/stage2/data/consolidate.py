@@ -127,7 +127,8 @@ def collect_and_parse_pools(coco_json_paths, class_mapping, config):
                         normalized_coords.append(f"{ny:.6f}")
 
                     yolo_lines.append(f"{class_idx} " + " ".join(normalized_coords))
-                    detected_classes_in_image.add(raw_label)
+                    target_class_name = config["target_classes"][class_idx]
+                    detected_classes_in_image.add(target_class_name)
 
             if yolo_lines:
                 primary_class = sorted(list(detected_classes_in_image))[0]
@@ -142,31 +143,30 @@ def collect_and_parse_pools(coco_json_paths, class_mapping, config):
 
 
 def parse_supervisely_dataset(supervisely_paths, class_mapping, config, split_pools):
-    """Scans Supervisely datasets and adds them to the existing split pools."""
-    print("[+] Parsing Supervisely JSON files from config...")
+    """Scans Supervisely datasets, shuffles, and distributes 80/10/10 across pools."""
+    import random
 
-    for split, dataset_root_str in supervisely_paths.items():
+    print("[+] Parsing Supervisely JSON files with dynamic 80/10/10 split...")
+
+    all_valid_items = []
+    total_extracted_polygons = 0
+
+    for _, dataset_root_str in supervisely_paths.items():
         dataset_root = Path(dataset_root_str)
         if not dataset_root.exists():
-            print(f"[-] Missing Supervisely dataset for {split}: {dataset_root}")
+            print(f"[-] Missing Supervisely dataset: {dataset_root}")
             continue
 
-        # Fix #1: Safer globbing pattern
         ann_files = [p for p in dataset_root.rglob("*.json") if p.parent.name == "ann"]
         print(
             f"    -> Found {len(ann_files)} annotation files in '{dataset_root.name}'"
         )
 
-        valid_images_found = 0
-        added_instances = 0
-
         for ann_file in ann_files:
-            # Reconstruct the source image path
             img_name = ann_file.name.replace(".json", "")
             img_dir = ann_file.parent.parent / "img"
             src_img_path = img_dir / img_name
 
-            # Fix #2: Handle image extension mismatches (e.g. .png in JSON but .jpg on disk)
             if not src_img_path.exists():
                 base_name = Path(img_name).stem
                 possible_images = list(img_dir.glob(f"{base_name}.*"))
@@ -175,7 +175,6 @@ def parse_supervisely_dataset(supervisely_paths, class_mapping, config, split_po
                 else:
                     continue
 
-            valid_images_found += 1
             with open(ann_file, "r") as f:
                 ann_data = json.load(f)
 
@@ -197,7 +196,6 @@ def parse_supervisely_dataset(supervisely_paths, class_mapping, config, split_po
 
                 exterior = obj.get("points", {}).get("exterior", [])
 
-                # Fix #3: Supervisely stores [x,y] pairs. 3 pairs = 6 flat coordinates.
                 min_pairs = config.get("min_polygon_points", 6) / 2
                 if len(exterior) < min_pairs:
                     continue
@@ -214,20 +212,47 @@ def parse_supervisely_dataset(supervisely_paths, class_mapping, config, split_po
 
                 yolo_lines.append(f"{class_idx} " + " ".join(normalized_coords))
                 detected_classes_in_image.add(raw_label)
-                added_instances += 1
+                total_extracted_polygons += 1
 
             if yolo_lines:
                 primary_class = sorted(list(detected_classes_in_image))[0]
-                split_pools[split][primary_class].append(
+                # Store temporarily to allow shuffling before assignment
+                all_valid_items.append(
                     {
-                        "src_path": src_img_path,
-                        "lines": yolo_lines,
-                        "ext": src_img_path.suffix,
+                        "primary_class": primary_class,
+                        "payload": {
+                            "src_path": src_img_path,
+                            "lines": yolo_lines,
+                            "ext": src_img_path.suffix,
+                        },
                     }
                 )
 
-        print(f"    -> Successfully paired {valid_images_found} images.")
-        print(f"    -> Extracted {added_instances} valid polygons.")
+    # Shuffle the aggregated dataset for a random, unbiased split
+    random.seed(42)  # Set seed to ensure identical splits across repeated pipeline runs
+    random.shuffle(all_valid_items)
+
+    # Calculate partition indices for 80/10/10
+    total_images = len(all_valid_items)
+    train_end = int(total_images * 0.8)
+    val_end = int(total_images * 0.9)
+
+    train_items = all_valid_items[:train_end]
+    val_items = all_valid_items[train_end:val_end]
+    test_items = all_valid_items[val_end:]
+
+    # Inject partitioned items into the main YOLO split pools
+    for item in train_items:
+        split_pools["train"][item["primary_class"]].append(item["payload"])
+    for item in val_items:
+        split_pools["val"][item["primary_class"]].append(item["payload"])
+    for item in test_items:
+        split_pools["test"][item["primary_class"]].append(item["payload"])
+
+    print(f"    -> Successfully extracted {total_extracted_polygons} valid polygons.")
+    print(
+        f"    -> 80/10/10 Split Applied: {len(train_items)} Train | {len(val_items)} Val | {len(test_items)} Test"
+    )
 
 
 def balance_and_write_dataset(split_pools, processed_dir, target_classes):

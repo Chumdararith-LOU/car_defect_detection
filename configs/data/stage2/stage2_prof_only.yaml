@@ -1,6 +1,5 @@
 output_processed_dir: "data/processed/stage2"
 
-# Step 1: Testing baseline CarDD COCO first
 coco_json_paths:
   train: "data/raw/CarDD_release/CarDD_COCO/annotations/instances_train2017.json"
   val: "data/raw/CarDD_release/CarDD_COCO/annotations/instances_val2017.json"
@@ -18,7 +17,6 @@ target_classes:
   - "missing_component"
   - "corrosion"
 
-# String-to-Integer mapping
 class_mapping:
   # === 1. CarDD COCO Source ===
   "dent": 0
@@ -26,7 +24,14 @@ class_mapping:
   "crack": 2
   "glass shatter": 3
   "lamp broken": 4
-  # 'tire flat' explicitly omitted to prevent data corruption
+
+  # === 2. Supervisely Source ===
+  "Dent": 0
+  "Scratch": 1
+  "Cracked": 2
+  "Missing part": 5
+  "Broken part": 4
+  "Corrosion": 6
 
 min_polygon_points: 6
 clip_coordinates: true
