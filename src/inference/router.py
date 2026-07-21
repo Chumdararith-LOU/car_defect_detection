@@ -1,14 +1,13 @@
 import cv2
 import numpy as np
-import torch
 from ultralytics import YOLO
 from src.utils.config_helpers import load_pipeline_config, resolve_device
 
 
-def get_stitched_probability_map(img, net, device, overlap_frac=0.15, imgsz=512):
+def get_stitched_probability_map(img, yolo_model, device, overlap_frac=0.15, imgsz=640):
     """
-    Consolidated mathematical utility for slicing, raw inference,
-    and coordinate stitching across the competitive probability space.
+    Slices input image into 4 overlapping quadrants, runs model inference,
+    and stitches continuous probability maps to prevent receptive field dilution.
     """
     h_orig, w_orig = img.shape[:2]
     global_probs = np.zeros((h_orig, w_orig), dtype=np.float32)
@@ -26,38 +25,22 @@ def get_stitched_probability_map(img, net, device, overlap_frac=0.15, imgsz=512)
         tile_crop = img[y0:y1, x0:x1]
         t_h, t_w = tile_crop.shape[:2]
 
-        tile_resized = cv2.resize(tile_crop, (imgsz, imgsz))
-        img_tensor = (
-            (
-                torch.from_numpy(tile_resized[:, :, ::-1].copy())
-                .permute(2, 0, 1)
-                .float()
-                / 255.0
-            )
-            .unsqueeze(0)
-            .to(device)
-        )
+        results = yolo_model(tile_crop, device=device, verbose=False, imgsz=imgsz)
+        res = results[0]
 
-        with torch.no_grad():
-            raw_output = net(img_tensor)
-
-        logits = raw_output[0] if isinstance(raw_output, tuple) else raw_output
-
-        if logits.shape[1] == 1:
-            extended_logits = torch.cat([torch.zeros_like(logits), logits], dim=1)
-            probs = torch.softmax(extended_logits, dim=1)
-            raw_probs_map = probs[0, 1, :, :].cpu().numpy()
+        if hasattr(res, "semantic_mask") and res.semantic_mask is not None:
+            tile_prob = res.semantic_mask.data.cpu().numpy().squeeze()
+        elif hasattr(res, "masks") and res.masks is not None:
+            tile_prob = res.masks.data[0].cpu().numpy().squeeze()
         else:
-            probs = torch.softmax(logits, dim=1)
-            raw_probs_map = probs[0, 1, :, :].cpu().numpy()
+            tile_prob = np.zeros((imgsz, imgsz), dtype=np.float32)
 
-        tile_probs_resized = cv2.resize(
-            raw_probs_map, (t_w, t_h), interpolation=cv2.INTER_LINEAR
-        )
+        if tile_prob.shape[:2] != (t_h, t_w):
+            tile_prob = cv2.resize(
+                tile_prob, (t_w, t_h), interpolation=cv2.INTER_LINEAR
+            )
 
-        global_probs[y0:y1, x0:x1] = np.maximum(
-            global_probs[y0:y1, x0:x1], tile_probs_resized
-        )
+        global_probs[y0:y1, x0:x1] = np.maximum(global_probs[y0:y1, x0:x1], tile_prob)
 
     return global_probs
 
@@ -114,14 +97,30 @@ class RawStage1Router:
         ]
 
     def predict_stitched_probabilities(self, img, imgsz):
-        """Slices, runs raw-logits inference, and stitches probabilities back to full resolution."""
+        """Slices, runs inference, and stitches probabilities back to full resolution."""
         return get_stitched_probability_map(
-            img, self.net, self.device, self.overlap_frac, imgsz
+            img, self.yolo_model, self.device, self.overlap_frac, imgsz
         )
 
-    def run_hysteresis_gate(self, global_probs):
-        """Executes relative argmax decision mapping (winner-takes-all via > 0.5 threshold)."""
-        final_mask = (global_probs > 0.5).astype(np.uint8)
+    def run_hysteresis_gate(self, global_probs, tau_high=0.35, tau_low=0.15):
+        """
+        True double-threshold Hysteresis Gating.
+        Seeds are anchored at >= tau_high and expanded along paths >= tau_low.
+        """
+        high_seeds = (global_probs >= tau_high).astype(np.uint8)
+        low_pathways = (global_probs >= tau_low).astype(np.uint8)
+
+        if not np.any(high_seeds):
+            return np.zeros_like(global_probs, dtype=np.uint8)
+
+        num_labels, labels, _, _ = cv2.connectedComponentsWithStats(low_pathways)
+        final_mask = np.zeros_like(global_probs, dtype=np.uint8)
+
+        for label_idx in range(1, num_labels):
+            component_mask = labels == label_idx
+            if np.any(high_seeds[component_mask]):
+                final_mask[component_mask] = 1
+
         return final_mask
 
     def route_image(self, img_path, imgsz):
