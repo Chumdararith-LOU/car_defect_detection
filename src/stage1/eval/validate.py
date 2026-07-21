@@ -2,8 +2,8 @@ import argparse
 import os
 import yaml
 from pathlib import Path
-from src.inference.router import RawStage1Router
-from src.utils.config_helpers import load_pipeline_config
+from stage1.inference.router import RawStage1Router
+from stage1.utils.config_helpers import load_pipeline_config
 
 
 def load_yaml(path):

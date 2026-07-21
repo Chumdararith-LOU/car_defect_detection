@@ -86,7 +86,7 @@ def process_dataset(src_dir, dest_dir, overlap_frac=0.15, clean_dest=True):
 
 if __name__ == "__main__":
     import argparse
-    from src.utils.config_helpers import load_pipeline_config
+    from stage1.utils.config_helpers import load_pipeline_config
 
     parser = argparse.ArgumentParser(description="Configurable Dataset Tiling Engine")
     parser.add_argument(

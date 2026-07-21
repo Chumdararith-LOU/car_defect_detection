@@ -294,7 +294,7 @@ def evaluate_model(cfg, cached_defects, cached_cleans, device, save_all):
     print(f"[*] Profiling {name}...")
 
     if torch.cuda.is_available():
-        torch.cuda.reset_peak_memory_stats(device)
+        torch.cuda.reset_peak_memory_stats()
 
     model = YOLO(path).to(device)
     model.model.eval()

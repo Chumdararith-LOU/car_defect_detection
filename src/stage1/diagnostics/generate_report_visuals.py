@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import argparse
 from pathlib import Path
-from src.inference.router import RawStage1Router
+from stage1.inference.router import RawStage1Router
 
 MODELS_TO_COMPARE = [
     {

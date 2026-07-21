@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from ultralytics import YOLO
-from src.utils.config_helpers import load_pipeline_config, resolve_device
+from stage1.utils.config_helpers import load_pipeline_config, resolve_device
 
 
 def get_stitched_probability_map(img, yolo_model, device, overlap_frac=0.15, imgsz=640):

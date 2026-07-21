@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from ultralytics import YOLO
 from ultralytics import settings
-from src.utils.config_helpers import resolve_device
+from stage1.utils.config_helpers import resolve_device
 
 OriginalCrossEntropyLoss = nn.CrossEntropyLoss
 

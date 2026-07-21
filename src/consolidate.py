@@ -213,12 +213,8 @@ def main():
     coco_json_paths = config.get("coco_json_paths", {})
     class_mapping = config["class_mapping"]
 
-    # Generate the target_classes list sequentially based on the index in the mapping
-    target_classes = [
-        k for k, v in sorted(class_mapping.items(), key=lambda item: item[1])
-    ]
+    target_classes = config["target_classes"]
 
-    # Execute Pipeline
     clean_and_build_scaffolding(processed_dir)
 
     pools = collect_and_parse_pools(coco_json_paths, class_mapping, config)
