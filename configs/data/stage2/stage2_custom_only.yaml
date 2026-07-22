@@ -32,6 +32,12 @@ target_classes:
 class_mapping:
   Rust Detection.v1i.coco:
     car: 6
+    rust: 6
+    corrosion: 6
+    severe-corrosion: 6
+    moderate-corrosion: 6
+    mild-corrosion: 6
+    corroded-part: 6
   socarC.v1i.coco:
     Breakage: 4
     Crushed: 0
@@ -57,8 +63,22 @@ class_mapping:
 filter_config:
   Rust Detection.v1i.coco:
     __all__:
-      min_area_ratio: 0.005
-      max_area_ratio: 1.0
+      min_area_ratio: 0.01        # Remove micro-specks
+      max_area_ratio: 0.30        # Remove giant wall panels
+    car:
+      max_total_instances: 500    # Keep all 170, but set a ceiling
+    rust:
+      max_total_instances: 500
+    corrosion:
+      max_total_instances: 500
+    severe-corrosion:
+      max_total_instances: 300
+    moderate-corrosion:
+      max_total_instances: 300
+    mild-corrosion:
+      max_total_instances: 300
+    corroded-part:
+      max_total_instances: 300
   socarC.v1i.coco:
     __all__:
       min_area_ratio: 0.01
