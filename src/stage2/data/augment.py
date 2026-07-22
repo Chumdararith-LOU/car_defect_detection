@@ -74,12 +74,22 @@ def copy_paste_augmentation(
             pixel_pts = (pts * [w, h]).astype(np.int32)
 
             x, y, bw, bh = cv2.boundingRect(pixel_pts)
-            if bw <= 1 or bh <= 1:
+
+            x1 = max(0, x)
+            y1 = max(0, y)
+            x2 = min(w, x + bw)
+            y2 = min(h, y + bh)
+
+            bw_clamped = x2 - x1
+            bh_clamped = y2 - y1
+
+            if bw_clamped <= 1 or bh_clamped <= 1:
                 continue
 
-            patch = src_img[y : y + bh, x : x + bw].copy()
-            patch_mask = np.zeros((bh, bw), dtype=np.uint8)
-            local_pts = pixel_pts - [x, y]
+            patch = src_img[y1:y2, x1:x2].copy()
+            patch_mask = np.zeros((bh_clamped, bw_clamped), dtype=np.uint8)
+
+            local_pts = pixel_pts - [x1, y1]
             cv2.fillPoly(patch_mask, [local_pts], 255)
 
             dst_label_path = random.choice(label_files)
@@ -94,16 +104,20 @@ def copy_paste_augmentation(
 
             dh, dw = dst_img.shape[:2]
 
-            if dw <= bw or dh <= bh:
+            if dw <= bw_clamped or dh <= bh_clamped:
                 continue
 
-            paste_x = random.randint(0, dw - bw)
-            paste_y = random.randint(0, dh - bh)
+            paste_x = random.randint(0, dw - bw_clamped)
+            paste_y = random.randint(0, dh - bh_clamped)
 
-            roi = dst_img[paste_y : paste_y + bh, paste_x : paste_x + bw]
+            roi = dst_img[
+                paste_y : paste_y + bh_clamped, paste_x : paste_x + bw_clamped
+            ]
 
             roi[patch_mask == 255] = patch[patch_mask == 255]
-            dst_img[paste_y : paste_y + bh, paste_x : paste_x + bw] = roi
+            dst_img[paste_y : paste_y + bh_clamped, paste_x : paste_x + bw_clamped] = (
+                roi
+            )
 
             cv2.imwrite(str(dst_img_path), dst_img)
 
