@@ -50,16 +50,18 @@ def clean_and_build_scaffolding(processed_dir):
 
 
 def collect_and_parse_pools(coco_json_paths, class_mapping, config):
-    """Scans explicitly defined COCO JSON files and pools instances based on mapping rules."""
+    """Scans explicitly defined COCO JSON files and pools instances based on mapping rules and filters."""
     split_pools = {
         "train": defaultdict(list),
         "val": defaultdict(list),
         "test": defaultdict(list),
     }
-    print("[+] Parsing COCO JSON files from config...")
+    print("[+] Parsing COCO JSON files from config and applying YAML filters...")
+
+    # Global tracker for max_total_instances across all images
+    global_instance_counts = defaultdict(int)
 
     for split, paths in coco_json_paths.items():
-        # Enforce list structure to support multiple datasets per split
         if isinstance(paths, str):
             paths = [paths]
 
@@ -68,6 +70,21 @@ def collect_and_parse_pools(coco_json_paths, class_mapping, config):
             if not json_file.exists():
                 print(f"[-] Missing JSON for {split}: {json_file}")
                 continue
+
+            # 1. Match the current JSON file to its specific dataset rules
+            dataset_key = None
+            for key in class_mapping.keys():
+                if key in str(json_file):
+                    dataset_key = key
+                    break
+
+            if not dataset_key:
+                print(f"[-] No class mapping found for {json_file.name}. Skipping.")
+                continue
+
+            current_class_mapping = class_mapping[dataset_key]
+            dataset_filters = config.get("filter_config", {}).get(dataset_key, {})
+            all_rules = dataset_filters.get("__all__", {})
 
             split_dir = json_file.parent
             with open(json_file, "r") as f:
@@ -86,7 +103,6 @@ def collect_and_parse_pools(coco_json_paths, class_mapping, config):
                 img_info = images[img_id]
                 src_img_path = split_dir / img_info["file_name"]
 
-                # COCO standard directory structure fallback (e.g., train2017)
                 if not src_img_path.exists():
                     fallback_dir = json_file.parent.parent / f"{split}2017"
                     src_img_path = fallback_dir / img_info["file_name"]
@@ -97,14 +113,71 @@ def collect_and_parse_pools(coco_json_paths, class_mapping, config):
                 yolo_lines = []
                 detected_classes_in_image = set()
 
+                # Image-level tracker for max_instances_per_image
+                image_instance_counts = defaultdict(int)
+
+                img_w, img_h = img_info["width"], img_info["height"]
+                img_area = img_w * img_h
+
                 for ann in anns:
                     raw_label = categories.get(ann["category_id"])
 
-                    if raw_label not in class_mapping:
+                    # 2. Fix: Check the nested mapping for this specific dataset
+                    if raw_label not in current_class_mapping:
                         continue
 
-                    class_idx = class_mapping[raw_label]
-                    img_w, img_h = img_info["width"], img_info["height"]
+                    class_idx = current_class_mapping[raw_label]
+                    class_rules = dataset_filters.get(raw_label, {})
+
+                    # --- FILTER: Area Limits ---
+                    min_area_ratio = class_rules.get(
+                        "min_area_ratio", all_rules.get("min_area_ratio", 0.0)
+                    )
+                    max_area_ratio = class_rules.get(
+                        "max_area_ratio", all_rules.get("max_area_ratio", 1.0)
+                    )
+
+                    ann_area = ann.get("area")
+                    if not ann_area and "bbox" in ann:
+                        ann_area = ann["bbox"][2] * ann["bbox"][3]
+
+                    area_ratio = ann_area / img_area if img_area and ann_area else 0.0
+
+                    if area_ratio < min_area_ratio or area_ratio > max_area_ratio:
+                        continue  # Defect is too small or too large
+
+                    # --- FILTER: Aspect Ratio Limits ---
+                    max_aspect_ratio = class_rules.get(
+                        "max_aspect_ratio",
+                        all_rules.get("max_aspect_ratio", float("inf")),
+                    )
+                    if "bbox" in ann:
+                        bw, bh = ann["bbox"][2], ann["bbox"][3]
+                        if bw > 0 and bh > 0:
+                            aspect_ratio = max(bw / bh, bh / bw)
+                            if aspect_ratio > max_aspect_ratio:
+                                continue  # Defect is too heavily skewed
+
+                    # --- FILTER: Instance Caps ---
+                    max_img_instances = class_rules.get(
+                        "max_instances_per_image",
+                        all_rules.get("max_instances_per_image", float("inf")),
+                    )
+                    max_total_instances = class_rules.get(
+                        "max_total_instances",
+                        all_rules.get("max_total_instances", float("inf")),
+                    )
+
+                    if image_instance_counts[raw_label] >= max_img_instances:
+                        continue  # Image level cap reached
+
+                    global_key = f"{dataset_key}_{raw_label}"
+                    if global_instance_counts[global_key] >= max_total_instances:
+                        continue  # Dataset global cap reached
+
+                    # 3. Validated: Increment counters and extract coordinates
+                    image_instance_counts[raw_label] += 1
+                    global_instance_counts[global_key] += 1
 
                     segmentations = ann.get("segmentation", [])
                     if not segmentations or len(segmentations) == 0:
@@ -133,7 +206,6 @@ def collect_and_parse_pools(coco_json_paths, class_mapping, config):
 
                         yolo_lines.append(f"{class_idx} " + " ".join(normalized_coords))
 
-                        # Translate raw label to standard taxonomy
                         standard_class = config["target_classes"][class_idx]
                         detected_classes_in_image.add(standard_class)
 
