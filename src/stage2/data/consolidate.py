@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 from collections import defaultdict
 import yaml
+import hashlib
 
 
 def load_config(config_name):
@@ -51,180 +52,186 @@ def clean_and_build_scaffolding(processed_dir):
 
 def collect_and_parse_pools(coco_json_paths, class_mapping, config):
     """Scans explicitly defined COCO JSON files and pools instances based on mapping rules and filters."""
-    split_pools = {
-        "train": defaultdict(list),
-        "val": defaultdict(list),
-        "test": defaultdict(list),
-    }
-    print("[+] Parsing COCO JSON files from config and applying YAML filters...")
+    master_pool = []
+    print("[+] Parsing COCO JSON files into a unified pool...")
 
     # Global tracker for max_total_instances across all images
     global_instance_counts = defaultdict(int)
 
-    for split, paths in coco_json_paths.items():
-        if isinstance(paths, str):
-            paths = [paths]
+    # Rarest first for stratification
+    rarity_order = [
+        "corrosion",
+        "glass_shatter",
+        "crack",
+        "missing_component",
+        "broken_component",
+        "dent",
+        "scratch",
+    ]
 
-        for json_path_str in paths:
-            json_file = Path(json_path_str)
-            if not json_file.exists():
-                print(f"[-] Missing JSON for {split}: {json_file}")
+    for json_path_str in coco_json_paths:
+        json_file = Path(json_path_str)
+        if not json_file.exists():
+            print(f"[-] Missing JSON: {json_file}")
+            continue
+
+        # 1. Match the current JSON file to its specific dataset rules
+        dataset_key = None
+        for key in class_mapping.keys():
+            if key in str(json_file):
+                dataset_key = key
+                break
+
+        if not dataset_key:
+            print(f"[-] No class mapping found for {json_file.name}. Skipping.")
+            continue
+
+        current_class_mapping = class_mapping[dataset_key]
+        dataset_filters = config.get("filter_config", {}).get(dataset_key, {})
+        all_rules = dataset_filters.get("__all__", {})
+
+        split_dir = json_file.parent
+        with open(json_file, "r") as f:
+            coco_data = json.load(f)
+
+        categories = {cat["id"]: cat["name"] for cat in coco_data.get("categories", [])}
+        images = {img["id"]: img for img in coco_data.get("images", [])}
+
+        img_to_anns = defaultdict(list)
+        for ann in coco_data.get("annotations", []):
+            img_to_anns[ann["image_id"]].append(ann)
+
+        for img_id, anns in img_to_anns.items():
+            img_info = images[img_id]
+            src_img_path = split_dir / img_info["file_name"]
+
+            if not src_img_path.exists():
+                guessed_split = json_file.parent.name
+                fallback_dir = json_file.parent.parent / f"{guessed_split}2017"
+                src_img_path = fallback_dir / img_info["file_name"]
+
+            if not src_img_path.exists():
                 continue
 
-            # 1. Match the current JSON file to its specific dataset rules
-            dataset_key = None
-            for key in class_mapping.keys():
-                if key in str(json_file):
-                    dataset_key = key
-                    break
+            yolo_lines = []
+            detected_classes_in_image = set()
 
-            if not dataset_key:
-                print(f"[-] No class mapping found for {json_file.name}. Skipping.")
-                continue
+            # Image-level tracker for max_instances_per_image
+            image_instance_counts = defaultdict(int)
 
-            current_class_mapping = class_mapping[dataset_key]
-            dataset_filters = config.get("filter_config", {}).get(dataset_key, {})
-            all_rules = dataset_filters.get("__all__", {})
+            img_w, img_h = img_info["width"], img_info["height"]
+            img_area = img_w * img_h
 
-            split_dir = json_file.parent
-            with open(json_file, "r") as f:
-                coco_data = json.load(f)
+            for ann in anns:
+                raw_label = categories.get(ann["category_id"])
 
-            categories = {
-                cat["id"]: cat["name"] for cat in coco_data.get("categories", [])
-            }
-            images = {img["id"]: img for img in coco_data.get("images", [])}
-
-            img_to_anns = defaultdict(list)
-            for ann in coco_data.get("annotations", []):
-                img_to_anns[ann["image_id"]].append(ann)
-
-            for img_id, anns in img_to_anns.items():
-                img_info = images[img_id]
-                src_img_path = split_dir / img_info["file_name"]
-
-                if not src_img_path.exists():
-                    fallback_dir = json_file.parent.parent / f"{split}2017"
-                    src_img_path = fallback_dir / img_info["file_name"]
-
-                if not src_img_path.exists():
+                # 2. Fix: Check the nested mapping for this specific dataset
+                if raw_label not in current_class_mapping:
                     continue
 
-                yolo_lines = []
-                detected_classes_in_image = set()
+                class_idx = current_class_mapping[raw_label]
+                class_rules = dataset_filters.get(raw_label, {})
 
-                # Image-level tracker for max_instances_per_image
-                image_instance_counts = defaultdict(int)
+                # --- FILTER: Area Limits ---
+                min_area_ratio = class_rules.get(
+                    "min_area_ratio", all_rules.get("min_area_ratio", 0.0)
+                )
+                max_area_ratio = class_rules.get(
+                    "max_area_ratio", all_rules.get("max_area_ratio", 1.0)
+                )
 
-                img_w, img_h = img_info["width"], img_info["height"]
-                img_area = img_w * img_h
+                ann_area = ann.get("area")
+                if not ann_area and "bbox" in ann:
+                    ann_area = ann["bbox"][2] * ann["bbox"][3]
 
-                for ann in anns:
-                    raw_label = categories.get(ann["category_id"])
+                area_ratio = ann_area / img_area if img_area and ann_area else 0.0
 
-                    # 2. Fix: Check the nested mapping for this specific dataset
-                    if raw_label not in current_class_mapping:
+                if area_ratio < min_area_ratio or area_ratio > max_area_ratio:
+                    continue  # Defect is too small or too large
+
+                # --- FILTER: Aspect Ratio Limits ---
+                max_aspect_ratio = class_rules.get(
+                    "max_aspect_ratio",
+                    all_rules.get("max_aspect_ratio", float("inf")),
+                )
+                if "bbox" in ann:
+                    bw, bh = ann["bbox"][2], ann["bbox"][3]
+                    if bw > 0 and bh > 0:
+                        aspect_ratio = max(bw / bh, bh / bw)
+                        if aspect_ratio > max_aspect_ratio:
+                            continue  # Defect is too heavily skewed
+
+                # --- FILTER: Instance Caps ---
+                max_img_instances = class_rules.get(
+                    "max_instances_per_image",
+                    all_rules.get("max_instances_per_image", float("inf")),
+                )
+                max_total_instances = class_rules.get(
+                    "max_total_instances",
+                    all_rules.get("max_total_instances", float("inf")),
+                )
+
+                if image_instance_counts[raw_label] >= max_img_instances:
+                    continue  # Image level cap reached
+
+                global_key = f"{dataset_key}_{raw_label}"
+                if global_instance_counts[global_key] >= max_total_instances:
+                    continue  # Dataset global cap reached
+
+                # 3. Validated: Increment counters and extract coordinates
+                image_instance_counts[raw_label] += 1
+                global_instance_counts[global_key] += 1
+
+                segmentations = ann.get("segmentation", [])
+                if not segmentations or len(segmentations) == 0:
+                    if "bbox" in ann:
+                        bx, by, bw, bh = ann["bbox"]
+                        segmentations = [
+                            [bx, by, bx + bw, by, bx + bw, by + bh, bx, by + bh]
+                        ]
+                    else:
                         continue
 
-                    class_idx = current_class_mapping[raw_label]
-                    class_rules = dataset_filters.get(raw_label, {})
+                min_points = config.get("min_polygon_points", 6)
 
-                    # --- FILTER: Area Limits ---
-                    min_area_ratio = class_rules.get(
-                        "min_area_ratio", all_rules.get("min_area_ratio", 0.0)
-                    )
-                    max_area_ratio = class_rules.get(
-                        "max_area_ratio", all_rules.get("max_area_ratio", 1.0)
-                    )
+                for seg in segmentations:
+                    if len(seg) < min_points:
+                        continue
+                    normalized_coords = []
+                    for i in range(0, len(seg), 2):
+                        nx = seg[i] / img_w
+                        ny = seg[i + 1] / img_h
+                        if config.get("clip_coordinates", True):
+                            nx = max(0.0, min(1.0, nx))
+                            ny = max(0.0, min(1.0, ny))
+                        normalized_coords.append(f"{nx:.6f}")
+                        normalized_coords.append(f"{ny:.6f}")
 
-                    ann_area = ann.get("area")
-                    if not ann_area and "bbox" in ann:
-                        ann_area = ann["bbox"][2] * ann["bbox"][3]
+                    yolo_lines.append(f"{class_idx} " + " ".join(normalized_coords))
 
-                    area_ratio = ann_area / img_area if img_area and ann_area else 0.0
+                    standard_class = config["target_classes"][class_idx]
+                    detected_classes_in_image.add(standard_class)
 
-                    if area_ratio < min_area_ratio or area_ratio > max_area_ratio:
-                        continue  # Defect is too small or too large
-
-                    # --- FILTER: Aspect Ratio Limits ---
-                    max_aspect_ratio = class_rules.get(
-                        "max_aspect_ratio",
-                        all_rules.get("max_aspect_ratio", float("inf")),
-                    )
-                    if "bbox" in ann:
-                        bw, bh = ann["bbox"][2], ann["bbox"][3]
-                        if bw > 0 and bh > 0:
-                            aspect_ratio = max(bw / bh, bh / bw)
-                            if aspect_ratio > max_aspect_ratio:
-                                continue  # Defect is too heavily skewed
-
-                    # --- FILTER: Instance Caps ---
-                    max_img_instances = class_rules.get(
-                        "max_instances_per_image",
-                        all_rules.get("max_instances_per_image", float("inf")),
-                    )
-                    max_total_instances = class_rules.get(
-                        "max_total_instances",
-                        all_rules.get("max_total_instances", float("inf")),
-                    )
-
-                    if image_instance_counts[raw_label] >= max_img_instances:
-                        continue  # Image level cap reached
-
-                    global_key = f"{dataset_key}_{raw_label}"
-                    if global_instance_counts[global_key] >= max_total_instances:
-                        continue  # Dataset global cap reached
-
-                    # 3. Validated: Increment counters and extract coordinates
-                    image_instance_counts[raw_label] += 1
-                    global_instance_counts[global_key] += 1
-
-                    segmentations = ann.get("segmentation", [])
-                    if not segmentations or len(segmentations) == 0:
-                        if "bbox" in ann:
-                            bx, by, bw, bh = ann["bbox"]
-                            segmentations = [
-                                [bx, by, bx + bw, by, bx + bw, by + bh, bx, by + bh]
-                            ]
-                        else:
-                            continue
-
-                    min_points = config.get("min_polygon_points", 6)
-
-                    for seg in segmentations:
-                        if len(seg) < min_points:
-                            continue
-                        normalized_coords = []
-                        for i in range(0, len(seg), 2):
-                            nx = seg[i] / img_w
-                            ny = seg[i + 1] / img_h
-                            if config.get("clip_coordinates", True):
-                                nx = max(0.0, min(1.0, nx))
-                                ny = max(0.0, min(1.0, ny))
-                            normalized_coords.append(f"{nx:.6f}")
-                            normalized_coords.append(f"{ny:.6f}")
-
-                        yolo_lines.append(f"{class_idx} " + " ".join(normalized_coords))
-
-                        standard_class = config["target_classes"][class_idx]
-                        detected_classes_in_image.add(standard_class)
-
-                if yolo_lines:
-                    primary_class = sorted(list(detected_classes_in_image))[0]
-                    split_pools[split][primary_class].append(
-                        {
+            if yolo_lines:
+                # Group by the rarest class present in the image
+                primary_class = next(
+                    cls for cls in rarity_order if cls in detected_classes_in_image
+                )
+                master_pool.append(
+                    {
+                        "primary_class": primary_class,
+                        "payload": {
                             "src_path": src_img_path,
                             "lines": yolo_lines,
                             "ext": os.path.splitext(img_info["file_name"])[1],
-                        }
-                    )
-    return split_pools
+                        },
+                    }
+                )
+    return master_pool
 
 
-def parse_supervisely_dataset(supervisely_paths, class_mapping, config, split_pools):
+def parse_supervisely_dataset(supervisely_paths, class_mapping, config):
     """Scans Supervisely datasets, shuffles, and distributes 80/10/10 across pools."""
-    import random
-
     print("[+] Parsing Supervisely JSON files with dynamic 80/10/10 split...")
 
     all_valid_items = []
@@ -296,7 +303,18 @@ def parse_supervisely_dataset(supervisely_paths, class_mapping, config, split_po
                 total_extracted_polygons += 1
 
             if yolo_lines:
-                primary_class = sorted(list(detected_classes_in_image))[0]
+                rarity_order = [
+                    "corrosion",
+                    "glass_shatter",
+                    "crack",
+                    "missing_component",
+                    "broken_component",
+                    "dent",
+                    "scratch",
+                ]
+                primary_class = next(
+                    cls for cls in rarity_order if cls in detected_classes_in_image
+                )
                 all_valid_items.append(
                     {
                         "primary_class": primary_class,
@@ -308,28 +326,57 @@ def parse_supervisely_dataset(supervisely_paths, class_mapping, config, split_po
                     }
                 )
 
-    random.seed(42)
-    random.shuffle(all_valid_items)
-
-    total_images = len(all_valid_items)
-    train_end = int(total_images * 0.8)
-    val_end = int(total_images * 0.9)
-
-    train_items = all_valid_items[:train_end]
-    val_items = all_valid_items[train_end:val_end]
-    test_items = all_valid_items[val_end:]
-
-    for item in train_items:
-        split_pools["train"][item["primary_class"]].append(item["payload"])
-    for item in val_items:
-        split_pools["val"][item["primary_class"]].append(item["payload"])
-    for item in test_items:
-        split_pools["test"][item["primary_class"]].append(item["payload"])
-
     print(f"    -> Successfully extracted {total_extracted_polygons} valid polygons.")
-    print(
-        f"    -> 80/10/10 Split Applied: {len(train_items)} Train | {len(val_items)} Val | {len(test_items)} Test"
-    )
+    return all_valid_items
+
+
+def deduplicate_and_split(master_pool):
+    """Deduplicates images by SHA256 hash and performs a stratified 80/10/10 split."""
+    print("\n[+] Deduplicating master pool via SHA256 image hashes...")
+    unique_hashes = set()
+    deduped_pool = []
+    duplicates_removed = 0
+
+    for item in master_pool:
+        img_path = item["payload"]["src_path"]
+
+        with open(img_path, "rb") as f:
+            file_hash = hashlib.sha256(f.read()).hexdigest()
+
+        if file_hash in unique_hashes:
+            duplicates_removed += 1
+            continue
+
+        unique_hashes.add(file_hash)
+        deduped_pool.append(item)
+
+    print(f"    -> Removed {duplicates_removed} duplicate images.")
+    print(f"    -> Final unique images for splitting: {len(deduped_pool)}")
+
+    grouped_items = defaultdict(list)
+    for item in deduped_pool:
+        grouped_items[item["primary_class"]].append(item["payload"])
+
+    split_pools = {
+        "train": defaultdict(list),
+        "val": defaultdict(list),
+        "test": defaultdict(list),
+    }
+
+    print("[+] Applying 80/10/10 Stratified Split by Rarest Class...")
+    for cls, items in grouped_items.items():
+        random.seed(42)
+        random.shuffle(items)
+
+        total = len(items)
+        train_end = int(total * 0.8)
+        val_end = int(total * 0.9)
+
+        split_pools["train"][cls].extend(items[:train_end])
+        split_pools["val"][cls].extend(items[train_end:val_end])
+        split_pools["test"][cls].extend(items[val_end:])
+
+    return split_pools
 
 
 def balance_and_write_dataset(split_pools, processed_dir, target_classes):
@@ -407,21 +454,26 @@ def main():
         return
 
     processed_dir = Path(config["output_processed_dir"])
-    coco_json_paths = config.get("coco_json_paths", {})
+    coco_json_paths = config.get("coco_json_paths", [])
     class_mapping = config["class_mapping"]
 
     target_classes = config["target_classes"]
 
     clean_and_build_scaffolding(processed_dir)
 
-    pools = collect_and_parse_pools(coco_json_paths, class_mapping, config)
+    master_pool = collect_and_parse_pools(coco_json_paths, class_mapping, config)
 
     supervisely_paths = config.get("supervisely_paths", {})
     if supervisely_paths:
-        parse_supervisely_dataset(supervisely_paths, class_mapping, config, pools)
+        supervisely_pool = parse_supervisely_dataset(
+            supervisely_paths, class_mapping, config
+        )
+        master_pool.extend(supervisely_pool)
+
+    split_pools = deduplicate_and_split(master_pool)
 
     mask_stats, img_stats, total_images = balance_and_write_dataset(
-        pools, processed_dir, target_classes
+        split_pools, processed_dir, target_classes
     )
 
     generate_metadata_yaml(processed_dir, target_classes)
