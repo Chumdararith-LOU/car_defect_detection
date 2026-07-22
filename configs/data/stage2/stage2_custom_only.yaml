@@ -31,16 +31,7 @@ target_classes:
 - corrosion
 class_mapping:
   Rust Detection.v1i.coco:
-    Rust: 6
     car: 6
-    copper corrosion: 6
-    corroded-part: 6
-    corrosion: 6
-    iron rust: 6
-    mild-corrosion: 6
-    moderate-corrosion: 6
-    rust: 6
-    severe-corrosion: 6
   socarC.v1i.coco:
     Breakage: 4
     Crushed: 0

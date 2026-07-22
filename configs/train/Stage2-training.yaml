@@ -9,7 +9,7 @@ run_name: yolo26m_1024_stage2_baseline
 # Dataset Paths
 dataset_config: "data/processed/stage2/data.yaml"
 
-epochs: 60
+epochs: 100
 imgsz: 1024
 batch_size: 8
 device: 0
@@ -21,13 +21,13 @@ lrf: 0.01
 
 augmentations:
   hsv_h: 0.03
-  hsv_s: 0.7
+  hsv_s: 0.4
   hsv_v: 0.5
-  degrees: 10.0
+  degrees: 30.0
   scale: 0.5
   perspective: 0.0005
   fliplr: 0.5
-  mosaic: 0.5
+  mosaic: 1.0
   mixup: 0.0
   erasing: 0.4
-  close_mosaic: 20
+  close_mosaic: 10
