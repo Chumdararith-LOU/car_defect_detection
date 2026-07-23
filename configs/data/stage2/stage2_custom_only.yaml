@@ -1,26 +1,22 @@
 output_processed_dir: data/processed/stage2_custom
 coco_json_paths:
-  train:
   - data/raw/Roboflow/Rust Detection.v1i.coco/train/_annotations.coco.json
-  - data/raw/Roboflow/socarC.v1i.coco/train/_annotations.coco.json
-  - data/raw/Roboflow/car defect.v1i.coco/train/_annotations.coco.json
-  - data/raw/Roboflow/crack_v2.v1i.coco/train/_annotations.coco.json
-  - data/raw/Roboflow/Car Defect Detection.coco-segmentation/train/_annotations.coco.json
-  - data/raw/Roboflow/car-damage-detection.v1i.coco/train/_annotations.coco.json
-  val:
   - data/raw/Roboflow/Rust Detection.v1i.coco/valid/_annotations.coco.json
-  - data/raw/Roboflow/socarC.v1i.coco/valid/_annotations.coco.json
-  - data/raw/Roboflow/car defect.v1i.coco/valid/_annotations.coco.json
-  - data/raw/Roboflow/crack_v2.v1i.coco/valid/_annotations.coco.json
-  - data/raw/Roboflow/Car Defect Detection.coco-segmentation/valid/_annotations.coco.json
-  - data/raw/Roboflow/car-damage-detection.v1i.coco/valid/_annotations.coco.json
-  test:
   - data/raw/Roboflow/Rust Detection.v1i.coco/test/_annotations.coco.json
+  - data/raw/Roboflow/socarC.v1i.coco/train/_annotations.coco.json
+  - data/raw/Roboflow/socarC.v1i.coco/valid/_annotations.coco.json
   - data/raw/Roboflow/socarC.v1i.coco/test/_annotations.coco.json
+  - data/raw/Roboflow/car defect.v1i.coco/train/_annotations.coco.json
+  - data/raw/Roboflow/car defect.v1i.coco/valid/_annotations.coco.json
   - data/raw/Roboflow/car defect.v1i.coco/test/_annotations.coco.json
+  - data/raw/Roboflow/crack_v2.v1i.coco/train/_annotations.coco.json
+  - data/raw/Roboflow/crack_v2.v1i.coco/valid/_annotations.coco.json
   - data/raw/Roboflow/crack_v2.v1i.coco/test/_annotations.coco.json
+  - data/raw/Roboflow/Car Defect Detection.coco-segmentation/train/_annotations.coco.json
+  - data/raw/Roboflow/Car Defect Detection.coco-segmentation/valid/_annotations.coco.json
   - data/raw/Roboflow/Car Defect Detection.coco-segmentation/test/_annotations.coco.json
-  - data/raw/Roboflow/car-damage-detection.v1i.coco/test/_annotations.coco.json
+  - data/raw/Roboflow/car-damage-detection.v1i.coco/train/_annotations.coco.json
+
 target_classes:
 - dent
 - scratch
