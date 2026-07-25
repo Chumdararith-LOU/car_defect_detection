@@ -61,20 +61,6 @@ filter_config:
     __all__:
       min_area_ratio: 0.01        # Remove micro-specks
       max_area_ratio: 0.30        # Remove giant wall panels
-    car:
-      max_total_instances: 500    # Keep all 170, but set a ceiling
-    rust:
-      max_total_instances: 500
-    corrosion:
-      max_total_instances: 500
-    severe-corrosion:
-      max_total_instances: 300
-    moderate-corrosion:
-      max_total_instances: 300
-    mild-corrosion:
-      max_total_instances: 300
-    corroded-part:
-      max_total_instances: 300
   socarC.v1i.coco:
     __all__:
       min_area_ratio: 0.01
@@ -96,6 +82,7 @@ filter_config:
       max_area_ratio: 0.3
     '2':
       min_area_ratio: 0.005
+      max_area_ratio: 0.20
     '3':
       min_area_ratio: 0.01
     '4':
@@ -110,6 +97,7 @@ filter_config:
       max_area_ratio: 0.3
     glass shatter:
       min_area_ratio: 0.005
+      max_area_ratio: 0.20
     lamp broken:
       min_area_ratio: 0.01
     scratch:

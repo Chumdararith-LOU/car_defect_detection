@@ -140,35 +140,64 @@ def main():
             if best_iou >= args.iou_thresh:
                 gt["detected"] = True
 
-    # Bucket the results
-    buckets = {
-        "Bottom 10% (Micro)": {"tp": 0, "total": 0},
-        "Middle 50% (Medium)": {"tp": 0, "total": 0},
-        "Top 40% (Macro)": {"tp": 0, "total": 0},
+    CLASS_NAMES = {
+        0: "dent",
+        1: "scratch",
+        2: "crack",
+        3: "glass_shatter",
+        4: "broken_component",
+        5: "missing_component",
     }
+
+    per_class_buckets = {}
 
     for gts in all_gts.values():
         for gt in gts:
+            cid = gt["class_id"]
+            if cid not in per_class_buckets:
+                per_class_buckets[cid] = {
+                    "Bottom 10%": {"tp": 0, "total": 0},
+                    "Middle 50%": {"tp": 0, "total": 0},
+                    "Top 40%": {"tp": 0, "total": 0},
+                }
+
             if gt["area"] <= p10:
-                b = "Bottom 10% (Micro)"
+                b = "Bottom 10%"
             elif gt["area"] <= p60:
-                b = "Middle 50% (Medium)"
+                b = "Middle 50%"
             else:
-                b = "Top 40% (Macro)"
+                b = "Top 40%"
 
-            buckets[b]["total"] += 1
+            per_class_buckets[cid][b]["total"] += 1
             if gt["detected"]:
-                buckets[b]["tp"] += 1
+                per_class_buckets[cid][b]["tp"] += 1
 
-    print("\n" + "=" * 50)
-    print(" 📊 SIZE-BUCKETED RECALL REPORT")
-    print("=" * 50)
-    for name, stats in buckets.items():
-        total = stats["total"]
-        tp = stats["tp"]
-        recall = (tp / total * 100) if total > 0 else 0.0
-        print(f" {name:<20}: {recall:>5.1f}% Recall ({tp}/{total})")
-    print("=" * 50)
+    print("\n" + "=" * 85)
+    print(" 📊 PER-CLASS SIZE-BUCKETED RECALL REPORT")
+    print("=" * 85)
+    header = f"{'Class':<18} | {'Bottom 10% (Micro)':<18} | {'Middle 50% (Med)':<18} | {'Top 40% (Macro)':<18} | {'Overall':<10}"
+    print(header)
+    print("-" * 85)
+
+    for cid in sorted(per_class_buckets.keys()):
+        c_name = CLASS_NAMES.get(cid, f"Class {cid}")
+        b_stats = per_class_buckets[cid]
+
+        row_str = f"{c_name:<18} | "
+        total_tp, total_gt = 0, 0
+
+        for b_name in ["Bottom 10%", "Middle 50%", "Top 40%"]:
+            tp = b_stats[b_name]["tp"]
+            tot = b_stats[b_name]["total"]
+            total_tp += tp
+            total_gt += tot
+            rec = (tp / tot * 100) if tot > 0 else 0.0
+            row_str += f"{rec:>5.1f}% ({tp}/{tot})     | "
+
+        overall_rec = (total_tp / total_gt * 100) if total_gt > 0 else 0.0
+        row_str += f"{overall_rec:>5.1f}%"
+        print(row_str)
+    print("=" * 85)
 
 
 if __name__ == "__main__":
