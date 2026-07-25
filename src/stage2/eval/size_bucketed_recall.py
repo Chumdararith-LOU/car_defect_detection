@@ -163,15 +163,34 @@ def main():
                 cid = obj.category.id
                 if obj.mask is not None:
                     try:
-                        poly_points = obj.mask.to_polygon()
-                        if len(poly_points) >= 3:
+                        # obj.mask.segmentation is COCO-style: a list of
+                        # [x1, y1, x2, y2, ...] polygons in full-image pixel
+                        # coords (sahi.annotation.Mask has no to_polygon()).
+                        segmentation = obj.mask.segmentation
+                        if not segmentation:
+                            continue
+
+                        candidate_polys = []
+                        for seg in segmentation:
+                            if len(seg) < 6:
+                                continue
                             norm_points = [
-                                (p[0] / img_w, p[1] / img_h) for p in poly_points
+                                (seg[i] / img_w, seg[i + 1] / img_h)
+                                for i in range(0, len(seg), 2)
                             ]
-                            poly = Polygon(norm_points)
-                            if poly.is_valid:
-                                preds.append({"class_id": int(cid), "poly": poly})
-                    except Exception:
+                            p = Polygon(norm_points)
+                            if p.is_valid and p.area > 0:
+                                candidate_polys.append(p)
+
+                        if not candidate_polys:
+                            continue
+
+                        # A mask can decode into multiple disjoint polygon
+                        # parts (e.g. an occluded instance); keep the largest.
+                        poly = max(candidate_polys, key=lambda p: p.area)
+                        preds.append({"class_id": int(cid), "poly": poly})
+                    except Exception as e:
+                        tqdm.write(f"[!] Mask parse failed on {img_path.name}: {e}")
                         continue
         else:
             results = model.predict(
