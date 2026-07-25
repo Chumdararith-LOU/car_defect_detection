@@ -147,6 +147,7 @@ def main():
         3: "glass_shatter",
         4: "broken_component",
         5: "missing_component",
+        6: "corrosion",
     }
 
     per_class_buckets = {}
