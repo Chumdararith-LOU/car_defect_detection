@@ -5,6 +5,7 @@ from pathlib import Path
 from tqdm import tqdm
 from shapely.geometry import Polygon
 from ultralytics import YOLO
+from PIL import Image
 
 
 def parse_yolo_labels(label_path):
@@ -70,13 +71,41 @@ def main():
         default=0.5,
         help="IoU threshold for a True Positive",
     )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="mps",
+        help="Device for inference ('mps', 'cuda', 'cpu')",
+    )
+    parser.add_argument(
+        "--use_sahi", action="store_true", help="Enable SAHI patch tiling inference"
+    )
+    parser.add_argument(
+        "--slice_size", type=int, default=640, help="SAHI slice patch height and width"
+    )
+    parser.add_argument(
+        "--overlap_ratio",
+        type=float,
+        default=0.25,
+        help="SAHI patch overlap ratio (25% enabled by 5s budget)",
+    )
     args = parser.parse_args()
 
     val_images_dir = Path(args.data_dir) / "val" / "images"
     val_labels_dir = Path(args.data_dir) / "val" / "labels"
 
-    print(f"[*] Loading model: {args.model}")
-    model = YOLO(args.model)
+    print(f"[*] Loading model on device '{args.device}': {args.model}")
+    if args.use_sahi:
+        from sahi import AutoDetectionModel
+
+        detection_model = AutoDetectionModel.from_pretrained(
+            model_type="yolov8",
+            model_path=args.model,
+            confidence_threshold=0.25,
+            device=args.device,
+        )
+    else:
+        model = YOLO(args.model)
 
     print("[*] Parsing Ground Truth and Calculating Areas...")
     image_files = list(val_images_dir.glob("*.jpg")) + list(
@@ -97,7 +126,6 @@ def main():
         print("[-] No ground truth labels found. Exiting.")
         return
 
-    # Calculate percentiles based on normalized area (fraction of image canvas)
     p10 = np.percentile(all_areas, 10)
     p60 = np.percentile(all_areas, 60)
 
@@ -111,22 +139,60 @@ def main():
         if not gts:
             continue
 
-        # Run inference (imgsz=1024 to match our strict baseline config)
-        results = model.predict(
-            source=str(img_path), imgsz=1024, verbose=False, conf=0.25
-        )
-        result = results[0]
-
         preds = []
-        if result.masks is not None:
-            # result.masks.xyn contains normalized coordinates
-            for cls_tensor, seg_coords in zip(result.boxes.cls, result.masks.xyn):
-                try:
-                    poly = Polygon(seg_coords)
-                    if poly.is_valid:
-                        preds.append({"class_id": int(cls_tensor.item()), "poly": poly})
-                except Exception:
-                    continue
+        if args.use_sahi:
+            from sahi.predict import get_sliced_prediction
+
+            with Image.open(img_path) as img:
+                img_w, img_h = img.size
+
+            sahi_result = get_sliced_prediction(
+                image=str(img_path),
+                detection_model=detection_model,
+                slice_height=args.slice_size,
+                slice_width=args.slice_size,
+                overlap_height_ratio=args.overlap_ratio,
+                overlap_width_ratio=args.overlap_ratio,
+                postprocess_type="NMS",
+                postprocess_match_metric="IOS",
+                postprocess_match_threshold=0.50,
+                verbose=False,
+            )
+
+            for obj in sahi_result.object_prediction_list:
+                cid = obj.category.id
+                if obj.mask is not None:
+                    try:
+                        poly_points = obj.mask.to_polygon()
+                        if len(poly_points) >= 3:
+                            norm_points = [
+                                (p[0] / img_w, p[1] / img_h) for p in poly_points
+                            ]
+                            poly = Polygon(norm_points)
+                            if poly.is_valid:
+                                preds.append({"class_id": int(cid), "poly": poly})
+                    except Exception:
+                        continue
+        else:
+            results = model.predict(
+                source=str(img_path),
+                imgsz=1024,
+                verbose=False,
+                conf=0.25,
+                device=args.device,
+            )
+            result = results[0]
+
+            if result.masks is not None:
+                for cls_tensor, seg_coords in zip(result.boxes.cls, result.masks.xyn):
+                    try:
+                        poly = Polygon(seg_coords)
+                        if poly.is_valid:
+                            preds.append(
+                                {"class_id": int(cls_tensor.item()), "poly": poly}
+                            )
+                    except Exception:
+                        continue
 
         # Match predictions to ground truth
         for gt in gts:
