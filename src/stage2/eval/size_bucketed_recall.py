@@ -89,19 +89,30 @@ def main():
         default=0.25,
         help="SAHI patch overlap ratio (25% enabled by 5s budget)",
     )
+    parser.add_argument(
+        "--conf_sweep",
+        type=str,
+        default="0.10,0.15,0.20,0.25,0.30,0.35,0.40",
+        help="Comma-separated list of confidence thresholds to sweep",
+    )
     args = parser.parse_args()
 
     val_images_dir = Path(args.data_dir) / "val" / "images"
     val_labels_dir = Path(args.data_dir) / "val" / "labels"
 
+    conf_thresholds = [float(c.strip()) for c in args.conf_sweep.split(",")]
+    min_conf = min(conf_thresholds)
+
     print(f"[*] Loading model on device '{args.device}': {args.model}")
+    print(f"[*] Confidence sweep thresholds: {conf_thresholds} (Minimum: {min_conf})")
+
     if args.use_sahi:
         from sahi import AutoDetectionModel
 
         detection_model = AutoDetectionModel.from_pretrained(
             model_type="yolov8",
             model_path=args.model,
-            confidence_threshold=0.25,
+            confidence_threshold=min_conf,
             device=args.device,
         )
     else:
@@ -161,11 +172,9 @@ def main():
 
             for obj in sahi_result.object_prediction_list:
                 cid = obj.category.id
+                conf_score = float(obj.score.value) if obj.score else min_conf
                 if obj.mask is not None:
                     try:
-                        # obj.mask.segmentation is COCO-style: a list of
-                        # [x1, y1, x2, y2, ...] polygons in full-image pixel
-                        # coords (sahi.annotation.Mask has no to_polygon()).
                         segmentation = obj.mask.segmentation
                         if not segmentation:
                             continue
@@ -185,35 +194,41 @@ def main():
                         if not candidate_polys:
                             continue
 
-                        # A mask can decode into multiple disjoint polygon
-                        # parts (e.g. an occluded instance); keep the largest.
                         poly = max(candidate_polys, key=lambda p: p.area)
-                        preds.append({"class_id": int(cid), "poly": poly})
-                    except Exception as e:
-                        tqdm.write(f"[!] Mask parse failed on {img_path.name}: {e}")
+                        preds.append(
+                            {"class_id": int(cid), "poly": poly, "conf": conf_score}
+                        )
+                    except Exception:
                         continue
         else:
             results = model.predict(
                 source=str(img_path),
                 imgsz=1024,
                 verbose=False,
-                conf=0.25,
+                conf=min_conf,
                 device=args.device,
             )
             result = results[0]
 
             if result.masks is not None:
-                for cls_tensor, seg_coords in zip(result.boxes.cls, result.masks.xyn):
+                for cls_tensor, conf_tensor, seg_coords in zip(
+                    result.boxes.cls, result.boxes.conf, result.masks.xyn
+                ):
                     try:
                         poly = Polygon(seg_coords)
                         if poly.is_valid:
                             preds.append(
-                                {"class_id": int(cls_tensor.item()), "poly": poly}
+                                {
+                                    "class_id": int(cls_tensor.item()),
+                                    "poly": poly,
+                                    "conf": float(conf_tensor.item()),
+                                }
                             )
                     except Exception:
                         continue
 
-        # Match predictions to ground truth
+        all_gts[img_path.name] = {"gts": gts, "preds": preds}
+
         for gt in gts:
             best_iou = 0.0
             for pred in preds:
@@ -235,55 +250,56 @@ def main():
         6: "corrosion",
     }
 
-    per_class_buckets = {}
-
-    for gts in all_gts.values():
-        for gt in gts:
-            cid = gt["class_id"]
-            if cid not in per_class_buckets:
-                per_class_buckets[cid] = {
-                    "Bottom 10%": {"tp": 0, "total": 0},
-                    "Middle 50%": {"tp": 0, "total": 0},
-                    "Top 40%": {"tp": 0, "total": 0},
-                }
-
-            if gt["area"] <= p10:
-                b = "Bottom 10%"
-            elif gt["area"] <= p60:
-                b = "Middle 50%"
-            else:
-                b = "Top 40%"
-
-            per_class_buckets[cid][b]["total"] += 1
-            if gt["detected"]:
-                per_class_buckets[cid][b]["tp"] += 1
-
-    print("\n" + "=" * 85)
-    print(" 📊 PER-CLASS SIZE-BUCKETED RECALL REPORT")
-    print("=" * 85)
-    header = f"{'Class':<18} | {'Bottom 10% (Micro)':<18} | {'Middle 50% (Med)':<18} | {'Top 40% (Macro)':<18} | {'Overall':<10}"
+    print("\n" + "=" * 90)
+    print(" 📈 CONFIDENCE THRESHOLD SWEEP SUMMARY (OVERALL RECALL %)")
+    print("=" * 90)
+    header = (
+        f"{'Conf Thresh':<12} | "
+        + " | ".join([f"{CLASS_NAMES[i]:<14}" for i in sorted(CLASS_NAMES.keys())])
+        + " | Overall"
+    )
     print(header)
-    print("-" * 85)
+    print("-" * 90)
 
-    for cid in sorted(per_class_buckets.keys()):
-        c_name = CLASS_NAMES.get(cid, f"Class {cid}")
-        b_stats = per_class_buckets[cid]
+    for thresh in conf_thresholds:
+        class_stats = {cid: {"tp": 0, "total": 0} for cid in CLASS_NAMES.keys()}
 
-        row_str = f"{c_name:<18} | "
-        total_tp, total_gt = 0, 0
+        for img_data in all_gts.values():
+            gts = img_data["gts"]
+            preds = [p for p in img_data["preds"] if p["conf"] >= thresh]
 
-        for b_name in ["Bottom 10%", "Middle 50%", "Top 40%"]:
-            tp = b_stats[b_name]["tp"]
-            tot = b_stats[b_name]["total"]
-            total_tp += tp
-            total_gt += tot
+            for gt in gts:
+                cid = gt["class_id"]
+                if cid not in class_stats:
+                    class_stats[cid] = {"tp": 0, "total": 0}
+
+                class_stats[cid]["total"] += 1
+                best_iou = 0.0
+
+                for pred in preds:
+                    if pred["class_id"] == cid:
+                        iou = calculate_iou(gt["poly"], pred["poly"])
+                        if iou > best_iou:
+                            best_iou = iou
+
+                if best_iou >= args.iou_thresh:
+                    class_stats[cid]["tp"] += 1
+
+        row_str = f"conf = {thresh:<5.2f} | "
+        tot_tp, tot_gt = 0, 0
+        for cid in sorted(CLASS_NAMES.keys()):
+            tp = class_stats[cid]["tp"]
+            tot = class_stats[cid]["total"]
+            tot_tp += tp
+            tot_gt += tot
             rec = (tp / tot * 100) if tot > 0 else 0.0
-            row_str += f"{rec:>5.1f}% ({tp}/{tot})     | "
+            row_str += f"{rec:>5.1f}%          | "
 
-        overall_rec = (total_tp / total_gt * 100) if total_gt > 0 else 0.0
+        overall_rec = (tot_tp / tot_gt * 100) if tot_gt > 0 else 0.0
         row_str += f"{overall_rec:>5.1f}%"
         print(row_str)
-    print("=" * 85)
+
+    print("=" * 90)
 
 
 if __name__ == "__main__":
