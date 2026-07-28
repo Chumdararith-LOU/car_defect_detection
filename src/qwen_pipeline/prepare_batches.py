@@ -2,12 +2,9 @@ import json
 import shutil
 from pathlib import Path
 
-# --- Configuration ---
-SOURCE_IMG_DIR = Path(
-    "data/raw_images_to_process"
-)  # Change this to your source directory
-OUTPUT_BASE_DIR = Path("qwen_prelabels")  # Target directory for batches
-CHUNK_SIZE = 100  # Number of images per batch
+SOURCE_IMG_DIR = Path("data/raw_images_to_process")
+OUTPUT_BASE_DIR = Path("../../data/qwen_staging")
+CHUNK_SIZE = 100
 
 VALID_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
