@@ -1,150 +1,142 @@
 import json
 import shutil
-import random
 from pathlib import Path
+from collections import Counter
 import numpy as np
 
-# Set fixed seed for reproducible train/val split
-random.seed(42)
-
-# Source & Destination Paths
+# --- CONFIGURATION ---
 JSON_PATH = Path("data/raw/cvat_golden_2000/annotations/instances_default.json")
-SRC_IMG_DIR = Path("data/raw/cvat_golden_2000/images/default")
-OUTPUT_DIR = Path("data/processed/cvat_golden_2000")
+SRC_IMAGES_DIR = Path("data/raw/cvat_golden_2000/images/default")
+OUTPUT_DIR = Path("data/processed/cvat_golden_2000_yolo")
 
-# Taxonomy Mapping (8 Classes Total)
+MAX_IMAGES = 2000
+
+# --- TAXONOMY MAPPING ---
+# CVAT Cat ID -> (Target Class Index, Target Class Name)
 CLASS_MAPPING = {
-    1: 0,  # dent -> dent
-    2: 0,  # ding -> dent
-    3: 1,  # deform -> deform
-    4: 2,  # scratch_hairline -> scratch
-    5: 2,  # scratch_gouge -> scratch
-    6: 3,  # crack -> crack
-    7: 4,  # glass_shatter -> glass_shatter
-    8: 5,  # broken_lamp -> broken_lamp
-    9: 6,  # corrosion -> corrosion
-    10: 7,  # broken_components -> disjoint_part
+    1: (0, "dent"),  # dent -> dent
+    2: (0, "dent"),  # ding -> dent
+    3: (1, "deform"),  # deform (kept separate)
+    4: (2, "scratch"),  # scratch_hairline -> scratch
+    5: (2, "scratch"),  # scratch_gouge -> scratch
+    6: (3, "crack"),  # crack -> crack
+    7: (4, "glass_shatter"),  # glass_shatter -> glass_shatter
+    8: (5, "broken_lamp"),  # broken_lamp (kept separate)
+    9: (6, "corrosion"),  # corrosion -> corrosion
+    10: (7, "disjoint_part"),  # broken_components -> disjoint_part
 }
 
-CLASS_NAMES = [
-    "dent",
-    "deform",
-    "scratch",
-    "crack",
-    "glass_shatter",
-    "broken_lamp",
-    "corrosion",
-    "disjoint_part",
+TARGET_CLASSES = [
+    "dent",  # 0
+    "deform",  # 1
+    "scratch",  # 2
+    "crack",  # 3
+    "glass_shatter",  # 4
+    "broken_lamp",  # 5
+    "corrosion",  # 6
+    "disjoint_part",  # 7
 ]
 
 
-def main():
-    print(f"Loading annotation JSON from {JSON_PATH}...")
+def convert_dataset():
+    out_images_dir = OUTPUT_DIR / "images"
+    out_labels_dir = OUTPUT_DIR / "labels"
+    out_images_dir.mkdir(parents=True, exist_ok=True)
+    out_labels_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"Loading COCO JSON from {JSON_PATH}...")
     with open(JSON_PATH, "r", encoding="utf-8") as f:
-        coco = json.load(f)
+        coco_data = json.load(f)
 
-    # 1. Isolate strictly the FIRST 2000 images
-    all_images = coco["images"][:2000]
-    target_img_ids = {img["id"] for img in all_images}
-    # img_map = {img["id"]: img for img in all_images}
+    # Slice the first 2,000 images
+    all_images = coco_data.get("images", [])
+    selected_images = all_images[:MAX_IMAGES]
+    print(
+        f"Processing the first {len(selected_images)} images out of {len(all_images)} total..."
+    )
 
-    print(f"Selected first {len(all_images)} images for processing.")
+    selected_img_ids = {img["id"]: img for img in selected_images}
 
-    # 2. Group annotations by image_id
-    img_annotations = {img_id: [] for img_id in target_img_ids}
-    for ann in coco.get("annotations", []):
+    # Group annotations by image_id
+    img_annotations = {img_id: [] for img_id in selected_img_ids.keys()}
+    for ann in coco_data.get("annotations", []):
         img_id = ann.get("image_id")
-        if img_id in target_img_ids:
+        if img_id in img_annotations:
             img_annotations[img_id].append(ann)
 
-    # 3. 80/20 Train / Val Split
-    img_ids = list(all_images)
-    random.shuffle(img_ids)
-    split_idx = int(len(img_ids) * 0.8)
+    class_counts = Counter()
+    processed_images_count = 0
+    images_with_defects = 0
 
-    train_imgs = img_ids[:split_idx]
-    val_imgs = img_ids[split_idx:]
+    for img_id, img_meta in selected_img_ids.items():
+        file_name = img_meta["file_name"]
+        w = float(img_meta["width"])
+        h = float(img_meta["height"])
 
-    splits = {"train": train_imgs, "val": val_imgs}
+        # Check source image existence
+        src_img_path = SRC_IMAGES_DIR / file_name
+        if not src_img_path.exists():
+            print(f"Warning: Image missing on disk: {src_img_path}")
+            continue
 
-    # Prepare directories
-    for split in ["train", "val"]:
-        (OUTPUT_DIR / "images" / split).mkdir(parents=True, exist_ok=True)
-        (OUTPUT_DIR / "labels" / split).mkdir(parents=True, exist_ok=True)
+        # Copy image to processed directory
+        shutil.copy2(src_img_path, out_images_dir / file_name)
 
-    # 4. Convert and Save
-    stats = {split: {cat: 0 for cat in CLASS_NAMES} for split in ["train", "val"]}
+        # Process annotations for this image
+        anns = img_annotations[img_id]
+        txt_filename = Path(file_name).stem + ".txt"
+        txt_filepath = out_labels_dir / txt_filename
 
-    for split, img_list in splits.items():
-        print(f"\nProcessing '{split}' split ({len(img_list)} images)...")
-        for img_meta in img_list:
-            img_id = img_meta["id"]
-            file_name = img_meta["file_name"]
-            w_g = float(img_meta["width"])
-            h_g = float(img_meta["height"])
+        label_lines = []
 
-            # Copy Image
-            src_img_path = SRC_IMG_DIR / file_name
-            dst_img_path = OUTPUT_DIR / "images" / split / file_name
-            if src_img_path.exists():
-                shutil.copy2(src_img_path, dst_img_path)
+        for ann in anns:
+            cat_id = ann.get("category_id")
+            if cat_id not in CLASS_MAPPING:
+                continue
 
-            # Generate YOLO Label Text
-            txt_filename = Path(file_name).stem + ".txt"
-            txt_filepath = OUTPUT_DIR / "labels" / split / txt_filename
+            target_cls_id, target_cls_name = CLASS_MAPPING[cat_id]
+            segmentations = ann.get("segmentation", [])
 
-            label_lines = []
-            for ann in img_annotations[img_id]:
-                cat_id = ann.get("category_id")
-                if cat_id not in CLASS_MAPPING:
+            if not segmentations:
+                continue
+
+            for seg in segmentations:
+                if len(seg) < 6:  # Skip degenerate points/lines
                     continue
 
-                yolo_class_id = CLASS_MAPPING[cat_id]
-                segmentations = ann.get("segmentation", [])
+                normalized_coords = []
+                for k in range(0, len(seg), 2):
+                    x_norm = np.clip(seg[k] / w, 0.0, 1.0)
+                    y_norm = np.clip(seg[k + 1] / h, 0.0, 1.0)
+                    normalized_coords.append(f"{x_norm:.6f} {y_norm:.6f}")
 
-                if not segmentations:
-                    continue
+                coord_str = " ".join(normalized_coords)
+                label_lines.append(f"{target_cls_id} {coord_str}")
+                class_counts[target_cls_name] += 1
 
-                for seg in segmentations:
-                    if len(seg) < 6:  # Skip invalid polygons
-                        continue
-
-                    # Normalize points [0, 1]
-                    norm_coords = []
-                    for k in range(0, len(seg), 2):
-                        x_norm = np.clip(seg[k] / w_g, 0.0, 1.0)
-                        y_norm = np.clip(seg[k + 1] / h_g, 0.0, 1.0)
-                        norm_coords.append(f"{x_norm:.6f} {y_norm:.6f}")
-
-                    coord_str = " ".join(norm_coords)
-                    label_lines.append(f"{yolo_class_id} {coord_str}")
-                    stats[split][CLASS_NAMES[yolo_class_id]] += 1
-
+        # Write label file (even if empty, to ensure 1:1 image-label mapping)
+        with open(txt_filepath, "w", encoding="utf-8") as f_label:
             if label_lines:
-                with open(txt_filepath, "w", encoding="utf-8") as f_txt:
-                    f_txt.write("\n".join(label_lines) + "\n")
+                f_label.write("\n".join(label_lines) + "\n")
+                images_with_defects += 1
 
-    # 5. Output YAML Dataset Configuration File
-    data_yaml = {
-        "path": str(OUTPUT_DIR.resolve()),
-        "train": "images/train",
-        "val": "images/val",
-        "names": {i: name for i, name in enumerate(CLASS_NAMES)},
-    }
+        processed_images_count += 1
 
-    yaml_path = OUTPUT_DIR / "dataset.yaml"
-    with open(yaml_path, "w", encoding="utf-8") as f_yaml:
-        import yaml
-
-        yaml.dump(data_yaml, f_yaml, sort_keys=False)
-
-    print("\nProcessing complete!")
-    print(f"Dataset generated at: {OUTPUT_DIR}")
-    print(f"YAML config saved to: {yaml_path}\n")
-    print("Instance counts per class:")
-    for split in ["train", "val"]:
-        print(f"  [{split.upper()}]", stats[split])
+    # --- PRINT DETAILED SUMMARY FOR STUDYING ---
+    print("\n" + "=" * 50)
+    print("      DATASET CONVERSION & AUDIT SUMMARY")
+    print("=" * 50)
+    print(f"Total Images Processed   : {processed_images_count}")
+    print(f"Images with Defects     : {images_with_defects}")
+    print(f"Clean Images (0 defects): {processed_images_count - images_with_defects}")
+    print("\nInstance Counts Per Class:")
+    print("-" * 35)
+    for cls_idx, cls_name in enumerate(TARGET_CLASSES):
+        count = class_counts[cls_name]
+        print(f"  [{cls_idx}] {cls_name:<18}: {count:,} instances")
+    print("=" * 50)
+    print(f"Output saved to: {OUTPUT_DIR.resolve()}\n")
 
 
 if __name__ == "__main__":
-    main()
+    convert_dataset()
