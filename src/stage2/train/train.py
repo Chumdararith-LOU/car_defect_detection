@@ -128,7 +128,7 @@ def main():
     run_name = cfg.get("run_name", "experiment_run")
 
     model_preset = cfg.get("model_preset", "yolo26n-sem.pt")
-    epochs = cfg.get("epochs", 50)
+    epochs = cfg.get("epochs", 100)
     batch_size = cfg.get("batch_size", 16)
     imgsz = cfg.get("imgsz", 640)
 
@@ -180,6 +180,7 @@ def main():
             task=task,
             data=dataset_path,
             epochs=epochs,
+            patience=cfg.get("patience", 15),
             imgsz=imgsz,
             batch=batch_size,
             device=resolved_device,
@@ -187,13 +188,14 @@ def main():
             amp=cfg.get("amp", True),
             seed=42,
             freeze=cfg.get("freeze", 15),
+            multi_scale=cfg.get("multi_scale", True),
             lr0=cfg.get("lr0", 0.01),
             lrf=cfg.get("lrf", 0.01),
             hsv_h=aug.get("hsv_h", 0.015),
             hsv_s=aug.get("hsv_s", 0.7),
             hsv_v=aug.get("hsv_v", 0.4),
             degrees=aug.get("degrees", 0.0),
-            scale=aug.get("scale", 0.5),
+            scale=aug.get("scale", 0.2),
             perspective=aug.get("perspective", 0.0),
             fliplr=aug.get("fliplr", 0.5),
             mosaic=aug.get("mosaic", 1.0),

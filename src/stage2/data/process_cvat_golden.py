@@ -101,18 +101,25 @@ def convert_dataset():
                 continue
 
             for seg in segmentations:
-                if len(seg) < 6:  # Skip degenerate points/lines
+                if isinstance(seg, dict) or len(seg) < 6:
                     continue
 
                 normalized_coords = []
                 for k in range(0, len(seg), 2):
-                    x_norm = np.clip(seg[k] / w, 0.0, 1.0)
-                    y_norm = np.clip(seg[k + 1] / h, 0.0, 1.0)
+                    try:
+                        x_val = float(seg[k])
+                        y_val = float(seg[k + 1])
+                    except (ValueError, TypeError):
+                        continue
+
+                    x_norm = np.clip(x_val / w, 0.0, 1.0)
+                    y_norm = np.clip(y_val / h, 0.0, 1.0)
                     normalized_coords.append(f"{x_norm:.6f} {y_norm:.6f}")
 
-                coord_str = " ".join(normalized_coords)
-                label_lines.append(f"{target_cls_id} {coord_str}")
-                class_counts[target_cls_name] += 1
+                if normalized_coords:
+                    coord_str = " ".join(normalized_coords)
+                    label_lines.append(f"{target_cls_id} {coord_str}")
+                    class_counts[target_cls_name] += 1
 
         # Write label file (even if empty, to ensure 1:1 image-label mapping)
         with open(txt_filepath, "w", encoding="utf-8") as f_label:
