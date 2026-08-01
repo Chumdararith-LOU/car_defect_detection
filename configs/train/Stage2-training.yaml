@@ -2,13 +2,15 @@
 task: segment
 loss_type: focal
 fl_gamma: 2.0
+fl_alpha: 0.50
+fl_scale: 1.0
 model_preset: yolo26m-seg.pt
 project_name: car_defect_detection
-run_name: yolo26m_640_stage2_clean_data_tiling
-multi_scale: true
+run_name: yolo26m_640_stage2_clean_letterbox_tiling
+multi_scale: false
 
 # Dataset Paths
-dataset_config: "data/processed/stage2_clean_data_tiling/data.yaml"
+dataset_config: "data/processed/stage2_clean_letterbox_tiling/data.yaml"
 
 epochs: 100
 imgsz: 640
@@ -17,7 +19,7 @@ patience: 15
 device: 0
 workers: 8
 amp: true
-freeze: 15
+freeze: 0
 lr0: 0.01
 lrf: 0.01
 
@@ -29,7 +31,7 @@ augmentations:
   scale: 0.2
   perspective: 0.0005
   fliplr: 0.5
-  mosaic: 0.0
+  mosaic: 1.0
   mixup: 0.0
   erasing: 0.2
   close_mosaic: 0
