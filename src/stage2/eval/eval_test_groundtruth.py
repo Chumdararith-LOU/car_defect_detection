@@ -409,7 +409,7 @@ def main():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="runs/test_gt_eval_viz",
+        default="runs/test_gt_eval_viz2",
         help="Folder to save GT vs Prediction rendered images",
     )
     parser.add_argument("--conf", type=float, default=0.25, help="Confidence threshold")
