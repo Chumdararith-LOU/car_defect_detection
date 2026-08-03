@@ -154,6 +154,9 @@ def process_supervisely_source(source_name, supervisely_dir, unified_data, state
     for ext in image_extensions:
         img_paths.extend(list(base_path.rglob(ext)))
 
+    # Limit to first 2200 images and sort for consistent ordering
+    img_paths = sorted(img_paths)[:2200]
+
     for img_path in tqdm(img_paths, desc=f"  Supervisely Images ({source_name})"):
         # Locate corresponding Supervisely JSON file (e.g. image.jpg.json or image.json)
         json_path = Path(str(img_path) + ".json")

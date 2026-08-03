@@ -6,32 +6,33 @@ fl_alpha: 0.50
 fl_scale: 1.0
 model_preset: yolo26m-seg.pt
 project_name: car_defect_detection
-run_name: yolo26m_640_stage2_clean_letterbox_tiling
-multi_scale: false
+run_name: yolo26m_1024_stage2_clean_multiscale
+multi_scale: true
 
 # Dataset Paths
-dataset_config: "data/processed/stage2_clean_letterbox_tiling/data.yaml"
+dataset_config: "data/processed/yolo_seg_clean_2200/dataset.yaml"
 
-epochs: 100
-imgsz: 640
+epochs: 150
+imgsz: 1024
 batch_size: 8
 patience: 15
 device: 0
 workers: 8
 amp: true
-freeze: 0
+freeze: 15
 lr0: 0.01
 lrf: 0.01
+optimizer: auto
 
 augmentations:
   hsv_h: 0.03
   hsv_s: 0.4
   hsv_v: 0.5
-  degrees: 15.0
-  scale: 0.2
+  degrees: 30.0
+  scale: 0.5
   perspective: 0.0005
   fliplr: 0.5
   mosaic: 1.0
   mixup: 0.0
-  erasing: 0.2
-  close_mosaic: 0
+  erasing: 0.4
+  close_mosaic: 10

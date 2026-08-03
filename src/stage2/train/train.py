@@ -183,6 +183,7 @@ def main():
                 seed=42,
                 freeze=cfg.get("freeze", 0),
                 multi_scale=cfg.get("multi_scale", False),
+                optimizer=cfg.get("optimizer", "auto"),
                 lr0=cfg.get("lr0", 0.01),
                 lrf=cfg.get("lrf", 0.01),
                 hsv_h=aug.get("hsv_h", 0.03),
