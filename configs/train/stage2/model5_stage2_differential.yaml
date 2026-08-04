@@ -27,7 +27,7 @@ lrf: 0.01
 optimizer: SGD
 
 differential_lr: true
-split_layer_idx: 15
+split_layer_idx: 23
 backbone_lr_mult: 0.1
 
 augmentations:
