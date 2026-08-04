@@ -9,7 +9,7 @@ model_preset: /home/lamacpp/secure_workspace/car_defect_detection/runs/segment/m
 project_name: model5_resume_adapt
 run_name: stage2_differential_finetune
 
-multi_scale: true
+multi_scale: false
 
 dataset_config: "/home/lamacpp/Documents/car_defect_detection/data/processed/yolo_seg_clean_2200_/dataset.yaml"
 
@@ -22,7 +22,7 @@ workers: 8
 amp: true
 freeze: 0
 
-lr0: 0.001
+lr0: 0.0003
 lrf: 0.01
 optimizer: SGD
 
@@ -34,11 +34,11 @@ augmentations:
   hsv_h: 0.03
   hsv_s: 0.4
   hsv_v: 0.5
-  degrees: 30.0
-  scale: 0.5
+  degrees: 15.0
+  scale: 0.3
   perspective: 0.0005
   fliplr: 0.5
-  mosaic: 1.0
+  mosaic: 0.0
   mixup: 0.0
   erasing: 0.4
-  close_mosaic: 25
+  close_mosaic: 0
