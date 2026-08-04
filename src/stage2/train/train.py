@@ -11,6 +11,7 @@ from ultralytics import YOLO
 from ultralytics import settings
 from ultralytics.utils.loss import v8SegmentationLoss
 from stage1.utils.config_helpers import resolve_device
+from ultralytics.models.yolo.segment import SegmentationTrainer
 
 
 class ScaledFocalBCEWithLogitsLoss(nn.Module):
@@ -98,6 +99,10 @@ def main():
     fl_gamma = cfg.get("fl_gamma", 1.5)
     fl_alpha = cfg.get("fl_alpha", 0.50)
     fl_scale = cfg.get("fl_scale", 1.0)
+    use_differential_lr = cfg.get("differential_lr", False)
+    split_layer_idx = int(cfg.get("split_layer_idx", 15))
+    backbone_lr_mult = float(cfg.get("backbone_lr_mult", 0.1))
+    orig_build_optimizer = None
 
     orig_init = v8SegmentationLoss.__init__
 
@@ -118,6 +123,65 @@ def main():
         )
     else:
         print("[ℹ] Using standard BCE loss (no focal patch applied)")
+        if use_differential_lr:
+            orig_build_optimizer = SegmentationTrainer.build_optimizer
+
+            def patched_build_optimizer(
+                self,
+                model,
+                name="auto",
+                lr=0.001,
+                momentum=0.9,
+                decay=1e-5,
+                iterations=1e5,
+            ):
+                def module_index(param_name):
+                    for part in param_name.split("."):
+                        if part.isdigit():
+                            return int(part)
+                    return 999
+
+                backbone_params = []
+                head_params = []
+
+                for param_name, param in model.named_parameters():
+                    if not param.requires_grad:
+                        continue
+
+                    idx = module_index(param_name)
+
+                    if idx < split_layer_idx:
+                        backbone_params.append(param)
+                    else:
+                        head_params.append(param)
+
+                if len(backbone_params) == 0:
+                    print("[WARN] Differential LR: no backbone/neck params found.")
+
+                if len(head_params) == 0:
+                    print("[WARN] Differential LR: no head params found.")
+
+                optimizer = torch.optim.SGD(
+                    [
+                        {"params": backbone_params, "lr": lr * backbone_lr_mult},
+                        {"params": head_params, "lr": lr},
+                    ],
+                    momentum=momentum,
+                    nesterov=True,
+                    weight_decay=decay,
+                )
+
+                print(
+                    f"[DIFF-LR] backbone/neck params: {len(backbone_params)} "
+                    f"@ lr={lr * backbone_lr_mult:.6f} | "
+                    f"head params: {len(head_params)} "
+                    f"@ lr={lr:.6f} | split_idx={split_layer_idx}"
+                )
+
+                return optimizer
+
+            SegmentationTrainer.build_optimizer = patched_build_optimizer
+            print("[+] Differential LR enabled for this run")
 
     # MLflow setup
     if torch.backends.mps.is_available():
@@ -168,6 +232,11 @@ def main():
         mlflow.log_param("fl_gamma", fl_gamma)
         mlflow.log_param("fl_alpha", fl_alpha)
         mlflow.log_param("fl_scale", fl_scale)
+        mlflow.log_param("differential_lr", use_differential_lr)
+
+        if use_differential_lr:
+            mlflow.log_param("split_layer_idx", split_layer_idx)
+            mlflow.log_param("backbone_lr_mult", backbone_lr_mult)
 
         try:
             model.train(
@@ -206,6 +275,10 @@ def main():
             if loss_type == "focal":
                 v8SegmentationLoss.__init__ = orig_init
                 print("[ℹ] Restored v8SegmentationLoss.__init__ to original")
+
+            if use_differential_lr and orig_build_optimizer is not None:
+                SegmentationTrainer.build_optimizer = orig_build_optimizer
+                print("[ℹ] Restored SegmentationTrainer.build_optimizer to original")
 
         time.sleep(2)
         actual_save_dir = str(model.trainer.save_dir)
