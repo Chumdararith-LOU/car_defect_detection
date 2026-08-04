@@ -136,48 +136,79 @@ def main():
             decay=1e-5,
             iterations=1e5,
         ):
-            def module_index(param_name):
-                for part in param_name.split("."):
-                    if part.isdigit():
-                        return int(part)
-                return 999
+            # 6 groups: [BB_W, BB_B, BB_BN, Head_W, Head_B, Head_BN]
+            groups = [[] for _ in range(6)]
 
-            backbone_params = []
-            head_params = []
+            param_to_module = {}
+            for m in model.modules():
+                for p in m.parameters(recurse=False):
+                    param_to_module[p] = m
 
-            for param_name, param in model.named_parameters():
-                if not param.requires_grad:
+            seq_blocks = None
+            for attr_name in ["model", "backbone", "layers"]:
+                if hasattr(model, attr_name) and isinstance(
+                    getattr(model, attr_name), nn.ModuleList
+                ):
+                    seq_blocks = getattr(model, attr_name)
+                    break
+
+            if seq_blocks is None:
+                print("[WARN] Could not find ModuleList. Falling back to default LR.")
+                return orig_build_optimizer(
+                    self, model, name, lr, momentum, decay, iterations
+                )
+
+            module_to_idx = {}
+            for idx, block in enumerate(seq_blocks):
+                for m in block.modules():
+                    module_to_idx[m] = idx
+
+            for p in model.parameters():
+                if not p.requires_grad:
                     continue
 
-                idx = module_index(param_name)
+                m = param_to_module.get(p)
+                idx = module_to_idx.get(m, 999) if m else 999
+                is_head = idx >= split_layer_idx
 
-                if idx < split_layer_idx:
-                    backbone_params.append(param)
+                is_bias = hasattr(m, "bias") and p is m.bias
+                is_norm = (
+                    hasattr(m, "weight")
+                    and p is m.weight
+                    and not isinstance(m, (nn.Conv2d, nn.Linear, nn.Conv1d, nn.Conv3d))
+                )
+
+                if is_bias:
+                    group_idx = 4 if is_head else 1
+                elif is_norm:
+                    group_idx = 5 if is_head else 2
                 else:
-                    head_params.append(param)
+                    group_idx = 3 if is_head else 0
 
-            if len(backbone_params) == 0:
-                print("[WARN] Differential LR: no backbone/neck params found.")
+                groups[group_idx].append(p)
 
-            if len(head_params) == 0:
-                print("[WARN] Differential LR: no head params found.")
+            opt_groups = [
+                {
+                    "params": groups[0],
+                    "lr": lr * backbone_lr_mult,
+                    "weight_decay": decay,
+                },
+                {"params": groups[1], "lr": lr * backbone_lr_mult, "weight_decay": 0.0},
+                {"params": groups[2], "lr": lr * backbone_lr_mult, "weight_decay": 0.0},
+                {"params": groups[3], "lr": lr, "weight_decay": decay},
+                {"params": groups[4], "lr": lr, "weight_decay": 0.0},
+                {"params": groups[5], "lr": lr, "weight_decay": 0.0},
+            ]
 
-            optimizer = torch.optim.SGD(
-                [
-                    {"params": backbone_params, "lr": lr * backbone_lr_mult},
-                    {"params": head_params, "lr": lr},
-                ],
-                momentum=momentum,
-                nesterov=True,
-                weight_decay=decay,
-            )
+            opt_groups = [g for g in opt_groups if len(g["params"]) > 0]
 
-            print(
-                f"[DIFF-LR] backbone/neck params: {len(backbone_params)} "
-                f"@ lr={lr * backbone_lr_mult:.6f} | "
-                f"head params: {len(head_params)} "
-                f"@ lr={lr:.6f} | split_idx={split_layer_idx}"
-            )
+            optimizer = torch.optim.SGD(opt_groups, momentum=momentum, nesterov=True)
+
+            print(f"[DIFF-LR] Optimizer configured with {len(opt_groups)} groups:")
+            for i, g in enumerate(opt_groups):
+                print(
+                    f"  Group {i}: {len(g['params'])} params | lr={g['lr']:.6f} | decay={g['weight_decay']}"
+                )
 
             return optimizer
 
