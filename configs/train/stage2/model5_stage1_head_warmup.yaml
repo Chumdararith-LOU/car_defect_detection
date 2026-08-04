@@ -15,14 +15,14 @@ dataset_config: "/home/lamacpp/Documents/car_defect_detection/data/processed/yol
 
 epochs: 15
 imgsz: 1024
-batch_size: 8
+batch_size: 4
 patience: 100
 device: 0
 workers: 8
 amp: true
-freeze: 15
+freeze: 23
 
-lr0: 0.01
+lr0: 0.005
 lrf: 0.01
 optimizer: SGD
 
