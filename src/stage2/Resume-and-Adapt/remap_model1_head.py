@@ -71,8 +71,32 @@ def main():
     print(f"[3/5] Building target model: old nc={old_nc}, new nc={args.nc}")
     target = SegmentationModel(model_cfg, ch=3, nc=args.nc)
 
-    print("[4/5] Loading source weights with strict=False")
-    missing, unexpected = target.load_state_dict(src_state, strict=False)
+    print("[4/5] Filtering source weights before strict=False load")
+
+    target_state = target.state_dict()
+    filtered_src_state = {}
+    skipped_shape_mismatch = []
+    skipped_not_in_target = []
+
+    for key, value in src_state.items():
+        if key not in target_state:
+            skipped_not_in_target.append(key)
+        elif target_state[key].shape != value.shape:
+            skipped_shape_mismatch.append(
+                (key, tuple(value.shape), tuple(target_state[key].shape))
+            )
+        else:
+            filtered_src_state[key] = value
+
+    missing, unexpected = target.load_state_dict(filtered_src_state, strict=False)
+
+    print("\nSkipped source keys due to shape mismatch, expected old 7-class head:")
+    for key, src_shape, tgt_shape in skipped_shape_mismatch:
+        print(f"  shape_mismatch: {key} | source={src_shape} | target={tgt_shape}")
+
+    print("\nSkipped source keys not present in target model:")
+    for key in skipped_not_in_target:
+        print(f"  not_in_target: {key}")
 
     print("\nMissing keys, should mostly be new 8-class head layers:")
     for k in missing:
