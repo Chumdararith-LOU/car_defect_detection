@@ -123,65 +123,66 @@ def main():
         )
     else:
         print("[ℹ] Using standard BCE loss (no focal patch applied)")
-        if use_differential_lr:
-            orig_build_optimizer = SegmentationTrainer.build_optimizer
 
-            def patched_build_optimizer(
-                self,
-                model,
-                name="auto",
-                lr=0.001,
-                momentum=0.9,
-                decay=1e-5,
-                iterations=1e5,
-            ):
-                def module_index(param_name):
-                    for part in param_name.split("."):
-                        if part.isdigit():
-                            return int(part)
-                    return 999
+    if use_differential_lr:
+        orig_build_optimizer = SegmentationTrainer.build_optimizer
 
-                backbone_params = []
-                head_params = []
+        def patched_build_optimizer(
+            self,
+            model,
+            name="auto",
+            lr=0.001,
+            momentum=0.9,
+            decay=1e-5,
+            iterations=1e5,
+        ):
+            def module_index(param_name):
+                for part in param_name.split("."):
+                    if part.isdigit():
+                        return int(part)
+                return 999
 
-                for param_name, param in model.named_parameters():
-                    if not param.requires_grad:
-                        continue
+            backbone_params = []
+            head_params = []
 
-                    idx = module_index(param_name)
+            for param_name, param in model.named_parameters():
+                if not param.requires_grad:
+                    continue
 
-                    if idx < split_layer_idx:
-                        backbone_params.append(param)
-                    else:
-                        head_params.append(param)
+                idx = module_index(param_name)
 
-                if len(backbone_params) == 0:
-                    print("[WARN] Differential LR: no backbone/neck params found.")
+                if idx < split_layer_idx:
+                    backbone_params.append(param)
+                else:
+                    head_params.append(param)
 
-                if len(head_params) == 0:
-                    print("[WARN] Differential LR: no head params found.")
+            if len(backbone_params) == 0:
+                print("[WARN] Differential LR: no backbone/neck params found.")
 
-                optimizer = torch.optim.SGD(
-                    [
-                        {"params": backbone_params, "lr": lr * backbone_lr_mult},
-                        {"params": head_params, "lr": lr},
-                    ],
-                    momentum=momentum,
-                    nesterov=True,
-                    weight_decay=decay,
-                )
+            if len(head_params) == 0:
+                print("[WARN] Differential LR: no head params found.")
 
-                print(
-                    f"[DIFF-LR] backbone/neck params: {len(backbone_params)} "
-                    f"@ lr={lr * backbone_lr_mult:.6f} | "
-                    f"head params: {len(head_params)} "
-                    f"@ lr={lr:.6f} | split_idx={split_layer_idx}"
-                )
+            optimizer = torch.optim.SGD(
+                [
+                    {"params": backbone_params, "lr": lr * backbone_lr_mult},
+                    {"params": head_params, "lr": lr},
+                ],
+                momentum=momentum,
+                nesterov=True,
+                weight_decay=decay,
+            )
 
-                return optimizer
+            print(
+                f"[DIFF-LR] backbone/neck params: {len(backbone_params)} "
+                f"@ lr={lr * backbone_lr_mult:.6f} | "
+                f"head params: {len(head_params)} "
+                f"@ lr={lr:.6f} | split_idx={split_layer_idx}"
+            )
 
-            SegmentationTrainer.build_optimizer = patched_build_optimizer
-            print("[+] Differential LR enabled for this run")
+            return optimizer
+
+        SegmentationTrainer.build_optimizer = patched_build_optimizer
+        print("[+] Differential LR enabled for this run")
 
     # MLflow setup
     if torch.backends.mps.is_available():
