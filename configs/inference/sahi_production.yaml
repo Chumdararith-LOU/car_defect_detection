@@ -1,0 +1,33 @@
+# Operator-tunable inference config (Phase 3 validated values).
+# Preset choice: balanced = default (avoids alarm fatigue),
+#                safety   = recall-first shifts (missed defect = catastrophic).
+preset: balanced
+
+model_type: yolov8
+
+sahi:
+  slice_size: 640      # MUST match training resolution (Native Resolution Rule)
+  overlap_ratio: 0.15  # derived from O_min >= w / (2P)
+
+nms:
+  ios_threshold: 0.50  # mask Intersection-over-Smaller (thin-defect safe)
+
+presets:
+  balanced:   # rare recall ~0.69 / ~0.73, ~3 alarms per suspect car
+    class_rules:
+      "0": { conf: 0.25, min_area: 0 }
+      "1": { conf: 0.25, min_area: 0 }
+      "2": { conf: 0.25, min_area: 0 }
+      "3": { conf: 0.25, min_area: 0 }
+      "4": { conf: 0.25, min_area: 0 }
+      "5": { conf: 0.15, min_area: 30 }    # corrosion
+      "6": { conf: 0.15, min_area: 200 }   # disjoint_part
+  safety:     # rare recall ~0.85 / ~0.91, ~9 alarms per suspect car
+    class_rules:
+      "0": { conf: 0.25, min_area: 0 }
+      "1": { conf: 0.25, min_area: 0 }
+      "2": { conf: 0.25, min_area: 0 }
+      "3": { conf: 0.25, min_area: 0 }
+      "4": { conf: 0.25, min_area: 0 }
+      "5": { conf: 0.10, min_area: 30 }
+      "6": { conf: 0.10, min_area: 200 }
