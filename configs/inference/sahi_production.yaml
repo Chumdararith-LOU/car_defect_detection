@@ -13,7 +13,7 @@ nms:
   ios_threshold: 0.50  # mask Intersection-over-Smaller (thin-defect safe)
 
 presets:
-  balanced:   # rare recall ~0.69 / ~0.73, ~3 alarms per suspect car
+  balanced:   # ~1 false alarm per suspect car. Avoids operator alarm fatigue.
     class_rules:
       "0": { conf: 0.25, min_area: 0 }
       "1": { conf: 0.25, min_area: 0 }
@@ -22,7 +22,7 @@ presets:
       "4": { conf: 0.25, min_area: 0 }
       "5": { conf: 0.15, min_area: 30 }    # corrosion
       "6": { conf: 0.15, min_area: 200 }   # disjoint_part
-  safety:
+  safety:     # ~4 false alarms per suspect car. Recall-first for critical shifts.
     class_rules:
       "0": { conf: 0.25, min_area: 0 }
       "1": { conf: 0.25, min_area: 0 }
@@ -31,7 +31,16 @@ presets:
       "4": { conf: 0.25, min_area: 0 }
       "5": { conf: 0.10, min_area: 30 }
       "6": { conf: 0.10, min_area: 200 }
-  calib:
+  max_recall: # ~10 false alarms per suspect car. Maximum coverage.
+    class_rules:
+      "0": { conf: 0.25, min_area: 0 }
+      "1": { conf: 0.25, min_area: 0 }
+      "2": { conf: 0.25, min_area: 0 }
+      "3": { conf: 0.25, min_area: 0 }
+      "4": { conf: 0.25, min_area: 0 }
+      "5": { conf: 0.05, min_area: 30 }
+      "6": { conf: 0.05, min_area: 200 }
+  calib:      # threshold-sweep only, never ship to production
     class_rules:
       "0": { conf: 0.25, min_area: 0 }
       "1": { conf: 0.25, min_area: 0 }
