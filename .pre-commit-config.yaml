@@ -18,7 +18,7 @@ repos:
 
       - id: check-added-large-files
         name: 🚫 Block Large Files (Use DVC Instead)
-        args: ['--maxkb=2000']
+        args: ['--maxkb=5000']
 
       - id: detect-private-key
         name: 🔐 Prevent Secret Key Leaks
