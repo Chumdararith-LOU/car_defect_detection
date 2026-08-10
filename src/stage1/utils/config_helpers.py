@@ -12,7 +12,7 @@ def load_pipeline_config(config_path: str = "configs/pipeline_config.yaml") -> d
 def resolve_device(config: dict) -> torch.device:
     """
     Resolves the execution target device following the priority order:
-    1. CUDA if available (RTX 3090 Server)
+    1. CUDA if available
     2. MPS if available (MacBook Apple Silicon)
     3. CPU fallback
     """

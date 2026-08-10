@@ -1,0 +1,7 @@
+report_name,schema,test_mask_map50,test_mask_map50_95,test_mask_precision,test_mask_recall
+1_baseline_freeze_7cls,7-class,0.392,0.248,0.421,0.454
+2_baseline_unfreeze_7cls,7-class,0.424,0.282,0.477,0.42
+3_model5_stage2_8cls,8-class,0.529,0.406,0.628,0.548
+4_model5_stage1_7cls_15ep,7-class,0.639,0.496,0.795,0.588
+5_model5_stage2_7cls_forgetting,7-class,0.633,0.479,0.789,0.596
+6_champion_extended_7cls,7-class,0.65,0.494,0.666,0.635

@@ -49,3 +49,4 @@ _build/
 runs/
 
 src/Diagnost/
+src/stage2/data/EDA_spliting.ipynb
