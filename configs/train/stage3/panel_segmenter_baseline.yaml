@@ -2,14 +2,14 @@ task: segment
 
 differential_lr: false
 
-model_preset: /home/lamacpp/Documents/car_defect_detection/yolo26m-seg.pt
+model_preset: yolo26m-seg.pt
 
 project_name: stage3_panel_segmenter_baseline
 run_name: stage3_panel_segmenter_baseline
 
 multi_scale: false
 
-dataset_config: "/home/lamacpp/Documents/car_defect_detection/data/processed/stage3/car_damages_panel/car_damages_panel.yaml"
+dataset_config: "data/processed/stage3/car_damages_panel/car_damages_panel.yaml"
 
 epochs: 100
 imgsz: 640
