@@ -1,0 +1,38 @@
+task: segment
+
+differential_lr: false
+
+model_preset: yolo11n-seg.pt
+
+project_name: stage3_local_smoke
+run_name: stage3_panel_segmenter_local_smoke
+
+multi_scale: false
+
+dataset_config: "data/processed/stage3/car_damages_panel_smoke/car_damages_panel.yaml"
+
+epochs: 1
+imgsz: 320
+batch_size: 1
+patience: 3
+device: mps
+workers: 0
+amp: false
+freeze: 0
+
+lr0: 0.001
+lrf: 0.01
+optimizer: AdamW
+
+augmentations:
+  hsv_h: 0.0
+  hsv_s: 0.0
+  hsv_v: 0.0
+  degrees: 0.0
+  scale: 0.0
+  perspective: 0.0
+  fliplr: 0.0
+  mosaic: 0.0
+  mixup: 0.0
+  erasing: 0.0
+  close_mosaic: 0
