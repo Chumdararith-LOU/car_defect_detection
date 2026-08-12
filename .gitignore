@@ -70,3 +70,8 @@ skills-lock.json
 # Local environment secrets — never commit
 .env
 .pytest_cache/
+
+# Archive is tracked for inventory but large binaries inside are not
+archive/**/*.pt
+archive/**/*.onnx
+archive/**/*.engine
