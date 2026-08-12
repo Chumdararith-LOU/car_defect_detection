@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "debugging-wizard": {
+      "source": "farmage/opencode-skills",
+      "sourceType": "github",
+      "skillPath": "skills/debugging-wizard/SKILL.md",
+      "computedHash": "76679eeb7c52ed18c147a4f49775e88e8f7509d63de199b9ca53f424c843cb80"
+    },
+    "fastapi-expert": {
+      "source": "farmage/opencode-skills",
+      "sourceType": "github",
+      "skillPath": "skills/fastapi-expert/SKILL.md",
+      "computedHash": "88c53e4b72e40dd1f51344601295161589aa9bc1d76de276712a1cdbbc13c604"
+    },
+    "fine-tuning-expert": {
+      "source": "farmage/opencode-skills",
+      "sourceType": "github",
+      "skillPath": "skills/fine-tuning-expert/SKILL.md",
+      "computedHash": "5bf5bb41956ded74de6dec55e91406571f3adb194e3fd3b602785701da3b8cc2"
+    },
+    "ml-pipeline": {
+      "source": "farmage/opencode-skills",
+      "sourceType": "github",
+      "skillPath": "skills/ml-pipeline/SKILL.md",
+      "computedHash": "38a4e6a298a4d86f552107135a3b4f207d769e2290f343de0ec4ad50e01d9ea7"
+    },
+    "test-master": {
+      "source": "farmage/opencode-skills",
+      "sourceType": "github",
+      "skillPath": "skills/test-master/SKILL.md",
+      "computedHash": "403d85c7692e4421cf4a85e80171f2bc14f48de0b5798b5f9a37552ffc3061d4"
+    }
+  }
+}
