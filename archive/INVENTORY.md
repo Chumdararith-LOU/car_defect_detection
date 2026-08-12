@@ -54,3 +54,4 @@ archive/pre_standardization/misc/
 | configs/train/stage2/model5_stage1_head_warmup_7cls.yaml | archive/pre_standardization/configs/stage2/model5_stage1_head_warmup_7cls.yaml | Superseded Stage 2 experiment config (champion is model5_stage1_head_warmup_7cls_extended.yaml) | Archived |
 | configs/train/stage2/model5_stage2_differential.yaml | archive/pre_standardization/configs/stage2/model5_stage2_differential.yaml | Superseded Stage 2 experiment config (champion is model5_stage1_head_warmup_7cls_extended.yaml) | Archived |
 | configs/train/stage2/model5_stage2_differential_7cls.yaml | archive/pre_standardization/configs/stage2/model5_stage2_differential_7cls.yaml | Superseded Stage 2 experiment config (champion is model5_stage1_head_warmup_7cls_extended.yaml) | Archived |
+| src/Diagnost/ | archive/pre_standardization/notebooks/Diagnost/ | Exploratory/diagnostic notebooks from research phase; findings documented in weekly reports and champion manifest | Archived |
