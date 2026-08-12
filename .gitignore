@@ -62,3 +62,7 @@ mlflow_local.db
 
 
 reports/*
+
+# Agent/skills files — not part of project workspace
+.agents/
+skills-lock.json
