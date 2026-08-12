@@ -42,4 +42,4 @@ archive/pre_standardization/misc/
 
 | Original Path | Archive Path | Reason | Status |
 |---|---|---|---|
-| (to be filled during cleanup) | | | |
+| yolo_import/ | archive/pre_standardization/legacy_import/yolo_import/ | Unused Darknet-format import stub; no connection to any champion model | Archived |
