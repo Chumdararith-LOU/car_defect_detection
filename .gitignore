@@ -66,3 +66,7 @@ reports/*
 # Agent/skills files — not part of project workspace
 .agents/
 skills-lock.json
+
+# Local environment secrets — never commit
+.env
+.pytest_cache/
