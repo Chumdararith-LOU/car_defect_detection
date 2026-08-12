@@ -12,6 +12,10 @@ dvc[s3]>=3.50.0
 onnx>=1.16.0
 onnxruntime>=1.19.0
 
+# Inference & Geometry
+sahi
+shapely
+
 # Utilities
 pyyaml>=6.0
 python-dotenv>=1.0
