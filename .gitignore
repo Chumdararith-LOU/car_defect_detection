@@ -75,3 +75,8 @@ skills-lock.json
 archive/**/*.pt
 archive/**/*.onnx
 archive/**/*.engine
+
+# Large archived duplicates from src/Diagnost (exceed pre-commit 5 MB limit)
+archive/pre_standardization/notebooks/analyze_train_dataset (1).ipynb
+archive/pre_standardization/notebooks/study_stage2_tiled_dataset (1).ipynb
+archive/pre_standardization/notebooks/study_stage2_tiled_dataset (1).pdf

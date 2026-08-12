@@ -43,3 +43,6 @@ archive/pre_standardization/misc/
 | Original Path | Archive Path | Reason | Status |
 |---|---|---|---|
 | yolo_import/ | archive/pre_standardization/legacy_import/yolo_import/ | Unused Darknet-format import stub; no connection to any champion model | Archived |
+| src/Diagnost/analyze_train_dataset (1).ipynb | archive/pre_standardization/notebooks/analyze_train_dataset (1).ipynb | Duplicate notebook (copy with "(1)" suffix) | Archived |
+| src/Diagnost/study_stage2_tiled_dataset (1).ipynb | archive/pre_standardization/notebooks/study_stage2_tiled_dataset (1).ipynb | Duplicate notebook (copy with "(1)" suffix) | Archived |
+| src/Diagnost/study_stage2_tiled_dataset (1).pdf | archive/pre_standardization/notebooks/study_stage2_tiled_dataset (1).pdf | Duplicate notebook (copy with "(1)" suffix) | Archived |
