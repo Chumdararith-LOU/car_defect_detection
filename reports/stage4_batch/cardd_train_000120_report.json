@@ -1,0 +1,45 @@
+{
+  "inspection_id": "INSP_20260812_031608",
+  "timestamp": "2026-08-12T03:16:08Z",
+  "source_image": "data/processed/yolo_seg_clean_2200_7cls/test/images/cardd_train_000120.jpg",
+  "total_defects_found": 2,
+  "inspection_status": "FAIL",
+  "defects": [
+    {
+      "defect_id": "DEF_001",
+      "class": "scratch",
+      "confidence": 0.8527,
+      "global_bbox_xyxy": [
+        615,
+        28,
+        877,
+        657
+      ],
+      "metrics": {
+        "pixel_area": 116243.5,
+        "assigned_panel": "Front-door",
+        "containment_ratio_iod": 0.8172,
+        "damage_severity_index_dsi": 47.5513
+      },
+      "crop_storage_path": "reports/stage4_batch/cardd_train_000120_DEF_001.png"
+    },
+    {
+      "defect_id": "DEF_002",
+      "class": "crack",
+      "confidence": 0.3348,
+      "global_bbox_xyxy": [
+        518,
+        396,
+        548,
+        448
+      ],
+      "metrics": {
+        "pixel_area": 387.0,
+        "assigned_panel": "Front-door",
+        "containment_ratio_iod": 1.0,
+        "damage_severity_index_dsi": 0.1583
+      },
+      "crop_storage_path": "reports/stage4_batch/cardd_train_000120_DEF_002.png"
+    }
+  ]
+}

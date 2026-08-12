@@ -106,6 +106,7 @@ def run_mapping(
     device_s2,
     device_s3,
     preset_override=None,
+    panel_conf=0.25,
 ):
     image_path = Path(image_path)
     out_dir = Path(out_dir)
@@ -124,6 +125,7 @@ def run_mapping(
         device=device_s3,
         retina_masks=True,
         verbose=False,
+        conf=panel_conf,
     )[0]
     panel_unions = build_panel_unions(panel_res)
     print(
@@ -262,6 +264,12 @@ def main():
         default=None,
         help="Override SAHI preset (balanced/safety/max_recall)",
     )
+    ap.add_argument(
+        "--panel-conf",
+        type=float,
+        default=0.25,
+        help="Confidence threshold for the Stage 3 panel model",
+    )
     ap.add_argument("--device-s2", default="mps")
     ap.add_argument("--device-s3", default="mps")
     a = ap.parse_args()
@@ -275,6 +283,7 @@ def main():
         device_s2=a.device_s2,
         device_s3=a.device_s3,
         preset_override=a.preset,
+        panel_conf=a.panel_conf,
     )
 
 

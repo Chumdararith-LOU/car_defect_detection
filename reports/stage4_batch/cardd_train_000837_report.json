@@ -1,0 +1,63 @@
+{
+  "inspection_id": "INSP_20260812_031604",
+  "timestamp": "2026-08-12T03:16:04Z",
+  "source_image": "data/processed/yolo_seg_clean_2200_7cls/test/images/cardd_train_000837.jpg",
+  "total_defects_found": 3,
+  "inspection_status": "FAIL",
+  "defects": [
+    {
+      "defect_id": "DEF_001",
+      "class": "scratch",
+      "confidence": 0.8554,
+      "global_bbox_xyxy": [
+        459,
+        229,
+        794,
+        497
+      ],
+      "metrics": {
+        "pixel_area": 51603.5,
+        "assigned_panel": "Front-bumper",
+        "containment_ratio_iod": 0.999,
+        "damage_severity_index_dsi": 13.2966
+      },
+      "crop_storage_path": "reports/stage4_batch/cardd_train_000837_DEF_001.png"
+    },
+    {
+      "defect_id": "DEF_002",
+      "class": "scratch",
+      "confidence": 0.8468,
+      "global_bbox_xyxy": [
+        256,
+        139,
+        465,
+        634
+      ],
+      "metrics": {
+        "pixel_area": 48429.0,
+        "assigned_panel": "Front-bumper",
+        "containment_ratio_iod": 1.0,
+        "damage_severity_index_dsi": 12.4787
+      },
+      "crop_storage_path": "reports/stage4_batch/cardd_train_000837_DEF_002.png"
+    },
+    {
+      "defect_id": "DEF_003",
+      "class": "scratch",
+      "confidence": 0.7051,
+      "global_bbox_xyxy": [
+        787,
+        10,
+        999,
+        188
+      ],
+      "metrics": {
+        "pixel_area": 11660.0,
+        "assigned_panel": "Fender",
+        "containment_ratio_iod": 0.9975,
+        "damage_severity_index_dsi": 14.4928
+      },
+      "crop_storage_path": "reports/stage4_batch/cardd_train_000837_DEF_003.png"
+    }
+  ]
+}

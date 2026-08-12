@@ -59,3 +59,6 @@ data/processed/stage3/car_damages_panel/
 data/processed/stage3/car_damages_panel_smoke/
 mlflow_local.db
 /*.pt
+
+
+reports/*

@@ -1,0 +1,45 @@
+{
+  "inspection_id": "INSP_20260812_031601",
+  "timestamp": "2026-08-12T03:16:01Z",
+  "source_image": "data/processed/yolo_seg_clean_2200_7cls/test/images/cardd_test_001396.jpg",
+  "total_defects_found": 2,
+  "inspection_status": "FAIL",
+  "defects": [
+    {
+      "defect_id": "DEF_001",
+      "class": "broken_lamp",
+      "confidence": 0.7258,
+      "global_bbox_xyxy": [
+        416,
+        142,
+        595,
+        351
+      ],
+      "metrics": {
+        "pixel_area": 31697.0,
+        "assigned_panel": "Trunk",
+        "containment_ratio_iod": 1.0,
+        "damage_severity_index_dsi": 13.7312
+      },
+      "crop_storage_path": "reports/stage4_batch/cardd_test_001396_DEF_001.png"
+    },
+    {
+      "defect_id": "DEF_002",
+      "class": "crack",
+      "confidence": 0.6231,
+      "global_bbox_xyxy": [
+        303,
+        438,
+        633,
+        635
+      ],
+      "metrics": {
+        "pixel_area": 8173.5,
+        "assigned_panel": "Back-bumper",
+        "containment_ratio_iod": 1.0,
+        "damage_severity_index_dsi": 3.7933
+      },
+      "crop_storage_path": "reports/stage4_batch/cardd_test_001396_DEF_002.png"
+    }
+  ]
+}
