@@ -1,138 +1,144 @@
-# Project Proposal
+# **PROJECT PROPOSAL (REVISED)**
 
-**Project Title:** Automated AI-Based Visual Inspection System for Car Exterior Defect Detection
+**Project Title:** Automated Multi-Stage AI Pipeline for Component-Aware Automotive Exterior Defect Detection and Industrial Quality Inspection
 
-| **Item** | **Details** |
-|----------|-------------|
-| **Intern Name** | LOU Chumdararith |
-| **Company Supervisor** | Mr. CHAN Ritheareach |
-| **Academic Advisor** | Dr. VALY Dona |
-| **Organization/University** | AI Farm Robotics / Institute of Technology of Cambodia |
-| **Duration** | 12 Weeks / 3 Months |
-| **Date** | 03/July/2026 |
+**Intern Name:** LOU Chumdararith
 
----
+**Company Supervisor:** Mr. CHAN Ritheareach
 
-# 1. Executive Summary
+**Academic Advisor:** Dr. VALY Dona
 
-Quality control in automotive manufacturing is critical but traditionally relies on manual visual inspection, which is time-consuming, subjective, and prone to human fatigue. This project proposes the development of an Artificial Intelligence (AI) computer vision model capable of automatically detecting and classifying common exterior defects on vehicles. By leveraging deep learning, this system aims to assist quality assurance teams in identifying surface anomalies, missing components, and structural deformities with high accuracy and speed.
+**Organization/University:** AI Farm Robotics / Institute of Technology of Cambodia
 
----
+**Duration:** 12 Weeks / 3 Months
 
-# 2. Problem Statement
+**Date:** July 08, 2026
 
-In the current vehicle inspection process, inspectors must check for dozens of defect types. While internal assembly defects (like wiring routing) require human expertise, exterior appearance defects (scratches, dents, stains, missing parts) are highly repetitive. Relying solely on human vision for these exterior checks leads to inconsistent quality control and bottlenecks in the production line. There is a need for an automated, objective, and scalable vision system to handle these specific exterior inspections.
+**Document Version:** 2.0 (Industrial Research & Production Revision)
 
----
+## **1\. Executive Summary**
 
-# 3. Project Objectives
+Quality control in automotive manufacturing is critical but traditionally relies on manual visual inspection, which is time-consuming, highly subjective, and prone to human fatigue. While simple AI classification projects are common in academic environments, real-world factory integration requires a production-grade inspection system capable of high-throughput pre-screening, ultra-precise localized anomaly detection, and granular contextual reporting.
 
-The primary objective is to design, train, and evaluate a deep learning model for car exterior defect detection.
+This updated project proposes a **Multi-Stage Intelligent Visual Inspection Pipeline** that leverages four distinct datasets representing different computer vision paradigms. Rather than deploying a single, isolated neural network, this system coordinates a series of specialized models:
 
-### Specific Goals
+1. A binary salient object detection (SOD) model acting as a high-speed pre-screening filter.
+2. A multi-class instance segmentation core engine utilizing tiling-based inference to detect micro-level paint scratches, cracks, and dents.
+3. A component segmentation model to map structural panels (e.g., doors, hood, fenders).
 
-- **Dataset Creation:** Compile and annotate a dataset of car exterior images featuring targeted defects.
-- **Model Development:** Train an object detection model to identify and localize specific defect classes.
-- **Performance Optimization:** Achieve a target mean Average Precision (mAP) of >80% on the validation set.
-- **Prototype Demonstration:** Deploy the trained model in a simple inference pipeline to demonstrate real-time or batch defect detection.
+By calculating the geometric intersections between these layers, the final system dynamically isolates defects, generates automatic crops of damaged areas, and reports precise panel-specific diagnostics on an interactive industrial dashboard.
 
----
+## **2\. Problem Statement**
 
-# 4. Scope of Work
+Automotive final-assembly lines operate at high speeds, making automated inspection pipelines sensitive to computational bottlenecks and scale variations. Two primary challenges limit the effectiveness of standard single-model inspection systems on real-world factory floors:
 
-To ensure the project is achievable within the internship timeframe, the scope is strictly limited to exterior, visually detectable defects.
+1. **The Tiny Defect Problem (Scale Variance):** In high-resolution images capturing an entire vehicle or complete panels, critical defects such as thin scratches, minor paint chips, or glass hairline cracks occupy an extremely small fraction of the image canvas (often $\< 0.1\\%$ of total pixels). Standard object detectors downsample input frames, which completely erases these tiny features from deeper feature maps.
+2. **Lack of Contextual Awareness:** Industrial inspectors need to know more than just *what* the defect is; they need to know *where* it is located relative to the vehicle's bill of materials (e.g., *"Scratch on Front-Door"* vs. *"Scratch on Rear-Bumper"*). A raw bounding box classifier lacks the spatial awareness to correlate surface anomalies with specific body panels.
 
-## In-Scope Defect Classes
+To transition visual inspection from a basic research study to a viable factory solution, there is a clear industrial need for a multi-stage software pipeline that addresses scale issues using high-resolution tiling and generates contextual, panel-specific anomaly reports.
 
-### Surface Anomalies
-- Scratch/Chip
-- Stain
-- Dirty
-- Bird Droppings Stain
+## **3\. Project Objectives**
 
-### Geometric Deformities
-- Dent
-- Ding
-- Deform
+The primary objective of this project is to research, build, and deploy a multi-stage deep learning pipeline for car exterior defect detection capable of processing high-resolution industrial image and video feeds. Specific goals include:
 
-### Assembly/Part Issues
-- Missing Part
-- Bolt/Screw Missing (on exterior trim/wheels)
-- Colour Unmatch
+* **Objective 1: Multi-Model Pipeline Engineering:** Design and train a hierarchical inference pipeline containing:
+  * A lightweight binary pre-screener model ($M\_{\\text{binary}}$) trained on salient object boundaries to quickly filter out clean parts.
+  * A high-precision multi-class instance segmentation core model ($M\_{\\text{core}}$) trained on unified COCO and custom defect annotations.
+  * A structural panel segmenter model ($M\_{\\text{panel}}$) trained on body panel datasets to localize physical boundaries.
+* **Objective 2: Slicing Aided Hyper-Inference (SAHI) Integration:** Implement a tiling and sliding-window inference pipeline to solve the "Tiny Defect Problem," allowing the models to process sub-grid patches of high-resolution image inputs without losing fine spatial detail.
+* **Objective 3: Spatial Context Mapping:** Programmatically compute the geometric intersection over union ($\\text{IoU}$) and contour containment between localized defect polygons and structural panel segmentation masks to automatically identify the exact body panel affected.
+* **Objective 4: Production Dashboard UI:** Build a fully functional, high-throughput inspection dashboard (Streamlit or Gradio) that:
+  * Handles image and video uploads.
+  * Allows operators to query defects by specific panels (e.g., *"Show defects on Hood only"*).
+  * Generates pixel-level severity scores and outputs automated cropped close-ups of each detected defect with highlighted boundaries.
+* **Objective 5: Edge Optimization Research (Optional Milestone):** Benchmark lightweight model backbones (such as YOLOv8-Nano) to evaluate deployment feasibility on handheld smartphone inspection devices for floor workers.
 
-## Out-of-Scope
+## **4\. Scope of Work**
 
-- Internal mechanical defects (Wiring, Fluid Leaks, Hose Routing).
-- Tactile defects (Loose parts, Clip unlocks, Tightness).
-- Complex 3D gap/flushness measurements (Poor Fit) requiring specialized laser hardware.
+The project scope is strictly limited to exterior, visually detectable defects and vehicle components, utilizing the combined taxonomy of four available datasets.
 
----
+                                 \[SYSTEM PIPELINE SCOPE\]
+                                             │
+         ┌───────────────────────────────────┼───────────────────────────────────┐
+         ▼                                   ▼                                   ▼
+   \[IN-SCOPE DEFECTS\]              \[IN-SCOPE VEHICLE PARTS\]               \[OUT-OF-SCOPE\]
+   \- Scratch / Paint Chip          \- Hood / Trunk / Roof                \- Internal Wiring
+   \- Dent / Ding / Deform          \- Front / Back Bumper                \- Hose / Fluid leaks
+   \- Crack / Glass Shatter         \- Front / Back Doors                 \- Tightness / Torque
+   \- Broken Lamp / Taillight       \- Quarter-Panel / Fender             \- Underbody Mechanics
+   \- Corrosion / Rust / Flaking    \- Windshield / Windows / Mirrors     \- 3D Gap & Flushness
+   \- Missing Part                  \- Wheels / Tires                     \- Tactile / Loose Clips
 
-# 5. Methodology & Technical Approach
+## **5\. Methodology & Technical Approach**
 
-The project will follow a standard Machine Learning lifecycle.
+The system architecture is organized as an integrated, multi-stage software pipeline:
 
-## Phase 1: Data Collection & Preprocessing
+\[Incoming Frame\] ──► Stage 1 (Binary SOD) ──► Anomaly? ──► \[Yes\] ──► Stage 2 (Tiled Segmentation) ──► Crop & Analyze
+                        │                                               │
+                        ▼ \[No\]                                          ▼ (Intersect with Stage 3 Panel Mask)
+                    \[Pass Car\]                                    \[Factory Dashboard Diagnostic Output\]
 
-- Gather images from open-source automotive datasets, web scraping, or company-provided data.
-- Apply data augmentation (rotation, scaling, brightness adjustments) to increase dataset diversity and prevent overfitting.
+### **Stage 1: Salient Pre-Screening**
 
-## Phase 2: Data Annotation
+The system processes the incoming image using a lightweight model trained on **Dataset D (CarDD\_SOD)**. If no anomalous salient areas are flagged above a confidence threshold $\\tau\_{\\text{binary}}$, the frame bypassed. This minimizes processing delays for defect-free vehicles on the conveyor belt.
 
-- Use annotation tools (like Roboflow, CVAT, or LabelImg) to draw bounding boxes around defects and assign class labels.
+### **Stage 2: Slicing-Aided Instance Segmentation**
 
-## Phase 3: Model Selection & Training
+If an anomaly is detected, the frame is split into overlapping $640 \\times 640$ patches using a sliding grid. Each patch is processed at its native resolution by our multi-class instance segmentation model, trained on a unified dataset compiled from **Dataset B (Car Parts)** and **Dataset C (CarDD\_COCO)**.
 
-- Utilize an object detection architecture, such as YOLOv8 or YOLOv26, due to its high speed and accuracy trade-off.
-- Apply Transfer Learning using a model pre-trained on the COCO dataset to speed up convergence.
+The bounding box coordinates of any predicted defects are normalized using the standard YOLO scaling format:
 
-## Phase 4: Evaluation & Testing
+$$x\_{\\text{center}} \= \\frac{x\_{\\text{min}} \+ x\_{\\text{max}}}{2 \\cdot W}, \\quad w \= \\frac{x\_{\\text{max}} \- x\_{\\text{min}}}{W}$$
+Polygons are reconstructed across patch boundaries using Non-Maximum Suppression (NMS).
 
-- Evaluate the model using standard metrics:
-  - Precision
-  - Recall
-  - F1-Score
-  - mAP@0.5
-- Conduct inference on a held-out "test set" to simulate real-world performance.
+### **Stage 3: Spatial Context Mapping**
 
----
+Simultaneously, the global frame is evaluated by our panel segmenter model (trained on **Dataset A: Car Damages**). The coordinates of the detected defect polygon ($P\_{\\text{defect}}$) are checked against the panel segmentation masks ($M\_{\\text{panel}}$).
 
-# 6. Project Timeline (12-Week Schedule)
+The system maps the defect to the panel that yields the highest intersection score:
+
+$$\\text{Affected Panel} \= \\arg\\max\_{k} \\left( \\frac{\\text{Area}(P\_{\\text{defect}} \\cap M\_{\\text{panel}, k})}{\\text{Area}(P\_{\\text{defect}})} \\right)$$
+
+### **Stage 4: Interactive Factory UI & Report Generation**
+
+The dashboard UI processes the pipeline outputs to display:
+
+* An overview image of the vehicle with colored defect overlays and panel boundaries.
+* **Auto-generated close-up crops:** The system crops the image around the bounding box of each defect $\[x\_{\\text{min}}, y\_{\\text{min}}, x\_{\\text{max}}, y\_{\\text{max}}\]$ and displays these crops side-by-side with localized pixel dimensions.
+* **Operator Queries:** Inspectors can use dropdown menus to filter results (e.g., displaying only the cropped images of scratches detected on the "Hood").
+
+## **6\. Project Timeline (12-Week Schedule)**
 
 | **Week** | **Phase** | **Key Activities & Milestones** |
-|----------|-----------|----------------------------------|
-| **1–2** | Research & Setup | Literature review on CV in manufacturing. Setup development environment (Python, PyTorch/Ultralytics). Finalize defect classes. |
-| **3–5** | Data Pipeline | Aim for 500–1000 images per class. |
-| **6–7** | Model Training | Configure YOLO model. Run initial training epochs. Analyze loss curves and adjust hyperparameters (learning rate, batch size). |
-| **8–9** | Optimization | Address class imbalances. Fine-tune the model. Implement data augmentation strategies to improve Recall on hard-to-detect classes (like small scratches). |
-| **10–11** | Testing & UI | Evaluate final model metrics. Build a simple inference script or Streamlit web app to allow users to upload a car image and see detected defects. |
-| **12** | Documentation | Write a final internship report. Prepare presentation slides. Handover code and model weights to the supervisor. |
 
----
+| **1-2** | **Research & Design** | Literature review on SAHI and multi-stage models in manufacturing. Set up virtual environments (Python, PyTorch, Ultralytics). Design the pipeline's modular software architecture. |
 
-# 7. Expected Deliverables
+| **3-5** | **Data Pipeline Engineering** | Develop data engineering scripts to parse Supervisely JSON schemas and COCO format polygons into a unified YOLO-compatible instance segmentation text format. Programmatically balance and augment under-represented classes (e.g., Corrosion/Paint chips). |
 
-- **Annotated Dataset:** A clean, labeled dataset of car exterior defects ready for future training.
-- **Trained AI Model:** The final model weights (`.pt` file) and configuration files.
-- **Source Code:** Well-documented Python code for training, evaluation, and inference.
-- **Final Report:** A comprehensive document detailing the methodology, challenges faced, results, and recommendations for future work.
-- **Final Presentation:** A slide deck summarizing the project for stakeholders.
+| **6-7** | **Multi-Model Training** | Train $M\_{\\text{binary}}$ (SOD), $M\_{\\text{core}}$ (Instance Segmentation), and $M\_{\\text{panel}}$ (Body Panels). Track model metrics ($\\text{mAP}@50$, $\\text{mAP}@50-95$, precision, recall) and plot validation loss curves. |
 
----
+| **8-9** | **Pipeline & SAHI Integration** | Write the integration script to tile high-resolution inputs, run patch inference, merge overlapping edge polygons with NMS, and overlay defect coordinates onto the panel segmentation maps. |
 
-# 8. Resources Required
+| **10-11** | **Dashboard & Testing** | Build the interactive factory dashboard (Streamlit/Gradio). Connect image/video ingestion streams, implement cropping logic, add panel-filtering queries, and optimize the pipeline's processing speed. |
 
-## Hardware
+| **12** | **Documentation & Handover** | Write the final technical report, prepare presentation slides, package model weights, and hand over the codebase to the supervisor. |
 
-- Access to a NVIDIA GPU for model training.
+## **7\. Expected Deliverables**
 
-## Software
+1. **Standardized Defect Dataset:** A unified dataset containing coordinated image-label directories formatted for YOLO instance segmentation.
+2. **Suite of Trained Deep Learning Models:** Saved model weights (.pt files) for the binary pre-screener, the multi-class core engine, and the panel context mapper.
+3. **Core Modular Codebase:** Clean, well-documented Python scripts driving training, inference, sliding-window patch slicing (SAHI), and coordinate merging.
+4. **Industrial Factory Dashboard:** An interactive web dashboard allowing high-resolution frame processing, automatic crop generation, defect analysis, and panel-specific filtering.
+5. **Technical Internship Report & Slide Deck:** A comprehensive final document detailing your technical findings, latency testing, and recommendations for future edge device deployments.
 
-- Python 3.10 or higher
-- Ultralytics YOLO framework
-- OpenCV
-- Roboflow/CVAT for annotation
+## **8\. Resources Required**
 
-## Data
+* **Hardware:** Access to an NVIDIA GPU (e.g., RTX 3080 / RTX 4090 or cloud instances via Colab/Kaggle) to train the three separate models.
+* **Software:** Python 3.10+, PyTorch, Ultralytics YOLO framework, OpenCV, SAHI Python library, Streamlit or Gradio.
+* **Data Core:** Supervisely Car Parts Dataset, Supervisely Car Damages Dataset, CarDD (COCO format), and CarDD (SOD format).
 
-- Access to historical inspection images from the company (if available) or permission to scrape public datasets.
+**Proposal Submitted By:** LOU Chumdararith
+
+**Approved By:** \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ (Company Supervisor)
+
+**Approved By:** \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ (Academic Advisor)
