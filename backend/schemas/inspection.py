@@ -1,0 +1,47 @@
+from pydantic import BaseModel, Field, ConfigDict
+from typing import List, Optional, Tuple
+
+
+class ImageDims(BaseModel):
+    width: int
+    height: int
+
+
+class PreScreenResult(BaseModel):
+    anomalyDetected: bool
+    score: float
+    latencyMs: float
+
+
+class Panel(BaseModel):
+    id: str
+    label: str
+    polygon: List[Tuple[float, float]]
+
+
+class Defect(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    id: str = Field(..., alias="defect_id", serialization_alias="id")
+    defect_class: str = Field(..., alias="class", serialization_alias="class")
+    confidence: float
+    bbox: Tuple[float, float, float, float] = Field(
+        ..., alias="global_bbox_xyxy", serialization_alias="bbox"
+    )
+    polygon: List[Tuple[float, float]] = []
+    panel: str = Field(..., alias="assigned_panel", serialization_alias="panel")
+    iod: float = Field(..., alias="containment_ratio_iod", serialization_alias="iod")
+    dsi: float = Field(
+        ..., alias="damage_severity_index_dsi", serialization_alias="dsi"
+    )
+
+
+class InspectionPayload(BaseModel):
+    inspection_id: str
+    timestamp: str
+    vehicle_color_detected: str
+    total_defects_found: int
+    inspection_status: str = Field(..., description="Expected values: 'PASS' or 'FAIL'")
+    imageDims: Optional[ImageDims] = None
+    preScreen: Optional[PreScreenResult] = None
+    panels: Optional[List[Panel]] = None
+    defects: List[Defect]
