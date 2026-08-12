@@ -40,4 +40,4 @@ jobs:
     # 5. Execute your dataset pipeline verification suite
     - name: Run Schema Validation Tests
       run: |
-        pytest src/tests/
+        pytest tests/
