@@ -1,0 +1,117 @@
+{
+  "inspection_id": "INSP_20260812_024230",
+  "timestamp": "2026-08-12T02:42:30Z",
+  "source_image": "/Users/macbook/Documents/ITC8/Internship/AI Farm/Project/car_defect_detection/data/processed/yolo_seg_clean_2200_7cls/test/images/cardd_train_001870.jpg",
+  "total_defects_found": 6,
+  "inspection_status": "FAIL",
+  "defects": [
+    {
+      "defect_id": "DEF_001",
+      "class": "dent",
+      "confidence": 0.7768,
+      "global_bbox_xyxy": [
+        748,
+        161,
+        911,
+        474
+      ],
+      "metrics": {
+        "pixel_area": 23678.0,
+        "assigned_panel": "Fender",
+        "containment_ratio_iod": 1.0,
+        "damage_severity_index_dsi": 13.772
+      },
+      "crop_storage_path": "reports/stage4_mapping/cardd_train_001870_DEF_001.png"
+    },
+    {
+      "defect_id": "DEF_002",
+      "class": "dent",
+      "confidence": 0.7415,
+      "global_bbox_xyxy": [
+        432,
+        229,
+        731,
+        398
+      ],
+      "metrics": {
+        "pixel_area": 30069.5,
+        "assigned_panel": "Fender",
+        "containment_ratio_iod": 0.9988,
+        "damage_severity_index_dsi": 17.4895
+      },
+      "crop_storage_path": "reports/stage4_mapping/cardd_train_001870_DEF_002.png"
+    },
+    {
+      "defect_id": "DEF_003",
+      "class": "scratch",
+      "confidence": 0.7081,
+      "global_bbox_xyxy": [
+        299,
+        441,
+        489,
+        497
+      ],
+      "metrics": {
+        "pixel_area": 6283.5,
+        "assigned_panel": "Front-bumper",
+        "containment_ratio_iod": 1.0,
+        "damage_severity_index_dsi": 5.9596
+      },
+      "crop_storage_path": "reports/stage4_mapping/cardd_train_001870_DEF_003.png"
+    },
+    {
+      "defect_id": "DEF_004",
+      "class": "scratch",
+      "confidence": 0.6169,
+      "global_bbox_xyxy": [
+        252,
+        554,
+        450,
+        584
+      ],
+      "metrics": {
+        "pixel_area": 2301.5,
+        "assigned_panel": "Front-bumper",
+        "containment_ratio_iod": 1.0,
+        "damage_severity_index_dsi": 2.1829
+      },
+      "crop_storage_path": "reports/stage4_mapping/cardd_train_001870_DEF_004.png"
+    },
+    {
+      "defect_id": "DEF_005",
+      "class": "disjoint_part",
+      "confidence": 0.4132,
+      "global_bbox_xyxy": [
+        853,
+        66,
+        926,
+        648
+      ],
+      "metrics": {
+        "pixel_area": 361.0,
+        "assigned_panel": "Boundary/Trim",
+        "containment_ratio_iod": 0.09,
+        "damage_severity_index_dsi": 0.0
+      },
+      "crop_storage_path": "reports/stage4_mapping/cardd_train_001870_DEF_005.png"
+    },
+    {
+      "defect_id": "DEF_006",
+      "class": "disjoint_part",
+      "confidence": 0.2715,
+      "global_bbox_xyxy": [
+        377,
+        373,
+        560,
+        410
+      ],
+      "metrics": {
+        "pixel_area": 1997.5,
+        "assigned_panel": "Boundary/Trim",
+        "containment_ratio_iod": 0.4248,
+        "damage_severity_index_dsi": 0.0
+      },
+      "crop_storage_path": "reports/stage4_mapping/cardd_train_001870_DEF_006.png"
+    }
+  ]
+}
