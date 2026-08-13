@@ -61,11 +61,18 @@ def _get_field(defect, key):
     return getattr(defect, key, None)
 
 
+_PYDANTIC_FIELD_MAP = {
+    "assigned_panel": "panel",
+    "containment_ratio_iod": "iod",
+}
+
+
 def _set_field(defect, key, value):
     if hasattr(defect, "get"):
         defect[key] = value
     else:
-        setattr(defect, key, value)
+        field_name = _PYDANTIC_FIELD_MAP.get(key, key)
+        setattr(defect, field_name, value)
 
 
 def assign_defects_to_panels(defects, panels, iod_threshold=0.1) -> list:
