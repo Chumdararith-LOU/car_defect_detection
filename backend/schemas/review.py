@@ -19,3 +19,11 @@ class ReviewCreate(BaseModel):
 class ReviewResponse(ReviewCreate):
     id: int
     created_at: str
+
+
+class ReviewUpdate(BaseModel):
+    """Partial update — only provided fields are changed."""
+
+    operator_decision: Optional[OperatorDecision] = None
+    corrected_class: Optional[str] = None
+    notes: Optional[str] = None

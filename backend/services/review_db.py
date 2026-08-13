@@ -29,6 +29,8 @@ INSERT INTO reviews (
 )
 """
 
+_UPDATABLE_COLUMNS = ("operator_decision", "corrected_class", "notes")
+
 
 class ReviewDB:
     def __init__(self, db_path: Path = DEFAULT_DB_PATH):
@@ -62,6 +64,30 @@ class ReviewDB:
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
         return [dict(row) for row in rows]
+
+    def get_review(self, review_id: int) -> Optional[Dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM reviews WHERE id = ?", (review_id,)
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def update_review(
+        self, review_id: int, updates: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        if self.get_review(review_id) is None:
+            return None
+        filtered = {
+            column: value
+            for column, value in updates.items()
+            if column in _UPDATABLE_COLUMNS and value is not None
+        }
+        if filtered:
+            set_clause = ", ".join(f"{column} = ?" for column in filtered)
+            params = tuple(filtered.values()) + (review_id,)
+            with self._connect() as conn:
+                conn.execute(f"UPDATE reviews SET {set_clause} WHERE id = ?", params)
+        return self.get_review(review_id)
 
 
 review_db = ReviewDB()
