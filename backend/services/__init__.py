@@ -6,12 +6,14 @@ import numpy as np
 
 from core.model_manager import model_manager
 from core.system_metrics import resolve_device
-from schemas.inspection import Defect, InspectionPayload
+from schemas.inspection import Defect, InspectionPayload, Panel
 
 from .image_utils import process_uploaded_image
 from .stage1 import run_prescreen
 from .stage2_direct import run_direct_inference
 from .stage2_sahi import run_sahi_inference
+from .stage3 import run_panel_inference
+from .stage4 import assign_defects_to_panels
 
 logger = logging.getLogger("Orchestrator")
 
@@ -89,6 +91,19 @@ def run_inspection(
                     img_np, s2_model_obj, inspection_id, stage2_conf, resolved_device
                 )
 
+    # --- STAGE 3: PANEL SEGMENTATION ---
+    panels = []
+    stage3_model = model_manager.get_model(stage="stage3")
+    if stage3_model is not None:
+        logger.info("Stage 3 | Routing to Panel Segmentation...")
+        try:
+            panels = run_panel_inference(stage3_model, img_np, resolved_device)
+        except Exception as e:
+            logger.warning("Stage 3 panel inference failed: %s", e)
+            panels = []
+    else:
+        logger.warning("Stage 3 model not available, skipping panel segmentation")
+
     # Fallback synthetic anomaly blob derived from the Stage 1 saliency mask
     if s1_result["binary_mask"] is not None:
         binary_mask = s1_result["binary_mask"]
@@ -131,9 +146,23 @@ def run_inspection(
                 )
             )
 
+    # --- STAGE 4: IoD FUSION ---
+    if panels and defects:
+        logger.info("Stage 4 | Routing to IoD Fusion...")
+        defects = assign_defects_to_panels(defects, panels)
+
     inspection_status = "FAIL" if len(defects) > 0 else "PASS"
 
     pydantic_defects = [d if isinstance(d, Defect) else Defect(**d) for d in defects]
+
+    payload_panels = [
+        Panel(
+            id=f"panel_{p['id']}",
+            label=p["label"],
+            polygon=[(float(pt[0]), float(pt[1])) for pt in p.get("polygon", [])],
+        )
+        for p in panels
+    ]
 
     return InspectionPayload(
         inspection_id=inspection_id,
@@ -148,7 +177,7 @@ def run_inspection(
             "score": s1_result["saliency_score"],
             "latencyMs": s1_result["latency_ms"],
         },
-        panels=[],
+        panels=payload_panels,
     )
 
 
