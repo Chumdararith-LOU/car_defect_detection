@@ -27,7 +27,7 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
-app.include_router(host_router)
+app.include_router(host_router, prefix="/api")
 app.include_router(system_router)
 app.include_router(models_router)
 app.include_router(inspect_router)

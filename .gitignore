@@ -81,3 +81,6 @@ archive/pre_standardization/notebooks/analyze_train_dataset (1).ipynb
 archive/pre_standardization/notebooks/study_stage2_tiled_dataset (1).ipynb
 archive/pre_standardization/notebooks/study_stage2_tiled_dataset (1).pdf
 archive/pre_standardization/notebooks/Diagnost/
+
+# Local review database — never commit
+backend/data/*.db
