@@ -37,6 +37,7 @@ class GpuDevice(BaseModel):
 
 class GpuInfo(BaseModel):
     cuda_available: bool = False
+    mps_available: bool = False
     cuda_version: Optional[str] = None
     device_count: int = 0
     devices: List[GpuDevice] = Field(default_factory=list)

@@ -92,10 +92,11 @@ def _detect_disk(workspace_root: Path) -> DiskInfo:
 def _detect_gpu() -> GpuInfo:
     try:
         import torch
+    except Exception:
+        return GpuInfo(cuda_available=False, mps_available=False)
 
-        if not torch.cuda.is_available():
-            return GpuInfo(cuda_available=False)
-
+    # Check CUDA first (Ubuntu server)
+    if torch.cuda.is_available():
         devices: List[GpuDevice] = []
         for index in range(torch.cuda.device_count()):
             props = torch.cuda.get_device_properties(index)
@@ -115,12 +116,37 @@ def _detect_gpu() -> GpuInfo:
             )
         return GpuInfo(
             cuda_available=True,
+            mps_available=False,
             cuda_version=torch.version.cuda,
             device_count=len(devices),
             devices=devices,
         )
-    except Exception:
-        return GpuInfo(cuda_available=False)
+
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        vm = psutil.virtual_memory()
+        total_gb = round(vm.total / GB, 2)
+        try:
+            allocated_bytes = torch.mps.current_allocated_memory()
+            free_gb = round((vm.total - allocated_bytes) / GB, 2)
+        except Exception:
+            free_gb = round(vm.available / GB, 2)
+
+        devices = [
+            GpuDevice(
+                index=0,
+                name="Apple Silicon (MPS)",
+                total_vram_gb=total_gb,
+                free_vram_gb=free_gb,
+            )
+        ]
+        return GpuInfo(
+            cuda_available=False,
+            mps_available=True,
+            device_count=1,
+            devices=devices,
+        )
+
+    return GpuInfo(cuda_available=False, mps_available=False)
 
 
 def _detect_models(workspace_root: Path) -> Dict[str, ModelAvailability]:
@@ -155,7 +181,8 @@ def _build_capabilities(
     remote: RemoteInfo,
     allow_cpu: bool,
 ) -> Capabilities:
-    inference_device_ok = gpu.cuda_available or allow_cpu
+    has_gpu = gpu.cuda_available or gpu.mps_available
+    inference_device_ok = has_gpu or allow_cpu
     return Capabilities(
         can_infer_stage1=models["stage1"].available and inference_device_ok,
         can_infer_stage2=models["stage2"].available and inference_device_ok,
@@ -164,7 +191,7 @@ def _build_capabilities(
         can_train_stage1=gpu.cuda_available,
         can_train_stage2=gpu.cuda_available,
         can_train_stage3=gpu.cuda_available,
-        can_use_local_gpu=gpu.cuda_available,
+        can_use_local_gpu=has_gpu,
         can_use_remote=remote.configured and remote.reachable,
     )
 
@@ -187,6 +214,14 @@ def _build_recommendations(
             reason="Local CUDA GPU detected and champion models are available.",
         )
 
+    if gpu.mps_available and all_models_present:
+        return Recommendations(
+            runtime_mode="local",
+            inference_device="mps",
+            training_device="none",
+            reason="Apple Silicon MPS detected. Inference on MPS; training requires CUDA server.",
+        )
+
     if remote.configured and remote.reachable:
         return Recommendations(
             runtime_mode="remote",
@@ -200,7 +235,7 @@ def _build_recommendations(
             runtime_mode="local",
             inference_device="cpu",
             training_device="none",
-            reason="No CUDA GPU available; falling back to local CPU inference (slow).",
+            reason="No GPU available; falling back to local CPU inference (slow).",
         )
 
     return Recommendations(
@@ -217,9 +252,12 @@ def _build_warnings(
     disk: DiskInfo,
 ) -> List[str]:
     warnings: List[str] = []
-    if not gpu.cuda_available:
+    has_gpu = gpu.cuda_available or gpu.mps_available
+    if not has_gpu:
         warnings.append("no_gpu")
-    elif all(device.total_vram_gb < MIN_TRAINING_VRAM_GB for device in gpu.devices):
+    elif gpu.cuda_available and all(
+        device.total_vram_gb < MIN_TRAINING_VRAM_GB for device in gpu.devices
+    ):
         warnings.append("low_vram")
     if any(not model.available for model in models.values()):
         warnings.append("missing_models")
