@@ -13,7 +13,7 @@ from .stage1 import run_prescreen
 from .stage2_direct import run_direct_inference
 from .stage2_sahi import run_sahi_inference
 from .stage3 import run_panel_inference
-from .stage4 import assign_defects_to_panels
+from .stage4 import assign_defects_to_panels, rescue_unclassified_anomalies
 
 logger = logging.getLogger("Orchestrator")
 
@@ -147,9 +147,14 @@ def run_inspection(
             )
 
     # --- STAGE 4: IoD FUSION ---
+    suppressed_detections = []
     if panels and defects:
         logger.info("Stage 4 | Routing to IoD Fusion...")
-        defects = assign_defects_to_panels(defects, panels)
+        defects, suppressed_detections = assign_defects_to_panels(defects, panels)
+
+    unclassified_anomalies = rescue_unclassified_anomalies(
+        s1_result["binary_mask"], defects, panels, inspection_id
+    )
 
     inspection_status = "FAIL" if len(defects) > 0 else "PASS"
 
@@ -178,6 +183,8 @@ def run_inspection(
             "latencyMs": s1_result["latency_ms"],
         },
         panels=payload_panels,
+        unclassified_anomalies=unclassified_anomalies,
+        suppressed_detections=suppressed_detections,
     )
 
 

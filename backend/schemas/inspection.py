@@ -19,6 +19,25 @@ class Panel(BaseModel):
     polygon: List[Tuple[float, float]]
 
 
+class UnclassifiedAnomaly(BaseModel):
+    id: str
+    confidence: float
+    bbox: List[float]  # [x1, y1, x2, y2] normalized 0-1
+    polygon: Optional[List[List[float]]] = None
+    panel: Optional[str] = "Unknown"
+    reason: str = "stage1_rescue"
+
+
+class SuppressedDetection(BaseModel):
+    id: str
+    predicted_class: str
+    confidence: float
+    bbox: List[float]
+    polygon: Optional[List[List[float]]] = None
+    panel: Optional[str] = "Unknown"
+    reason: str  # e.g., "tire", "non_car_context"
+
+
 class Defect(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     id: str = Field(..., alias="defect_id", serialization_alias="id")
@@ -45,3 +64,5 @@ class InspectionPayload(BaseModel):
     preScreen: Optional[PreScreenResult] = None
     panels: Optional[List[Panel]] = None
     defects: List[Defect]
+    unclassified_anomalies: List[UnclassifiedAnomaly] = []
+    suppressed_detections: List[SuppressedDetection] = []

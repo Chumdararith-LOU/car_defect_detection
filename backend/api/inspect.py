@@ -33,6 +33,8 @@ async def inspect_vehicle(
             "total_defects_found": 0,
             "inspection_status": "PASS",
             "defects": [],
+            "unclassified_anomalies": [],
+            "suppressed_detections": [],
         }
 
     try:
