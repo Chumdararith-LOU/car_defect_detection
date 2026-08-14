@@ -4,6 +4,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
 from core.model_manager import model_manager
 from services import process_uploaded_image, run_inspection
+from services.inspection_store import save_inspection
 
 logger = logging.getLogger("InspectAPI")
 
@@ -63,6 +64,28 @@ async def inspect_vehicle(
             stage2_conf=stage2_conf,
             device=device,
         )
+
+        inspection_id = getattr(response_data, "inspection_id", "")
+        if inspection_id:
+            try:
+                if hasattr(response_data, "model_dump"):
+                    payload_dict = response_data.model_dump()
+                elif hasattr(response_data, "dict"):
+                    payload_dict = response_data.dict()
+                else:
+                    payload_dict = dict(response_data)
+
+                save_inspection(
+                    inspection_id=inspection_id,
+                    image_bytes=contents,
+                    image_filename=file.filename or "upload.jpg",
+                    payload=payload_dict,
+                )
+            except Exception as save_err:
+                logger.warning(
+                    f"Failed to persist inspection {inspection_id}: {save_err}"
+                )
+
         return response_data
 
     except Exception as e:
