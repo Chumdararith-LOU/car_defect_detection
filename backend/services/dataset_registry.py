@@ -203,6 +203,12 @@ def _generate_dataset_id(yaml_path: Path) -> str:
     """Generate a stable dataset ID from the YAML path."""
     try:
         rel = yaml_path.relative_to(DATA_PROCESSED_DIR)
+        # If the yaml is data.yaml or dataset.yaml, just use the parent dir name
+        if yaml_path.name in ("data.yaml", "dataset.yaml"):
+            parent_str = str(rel.parent)
+            if parent_str == ".":
+                return yaml_path.stem
+            return parent_str.replace("/", "_").replace("\\", "_")
         return str(rel.with_suffix("")).replace("/", "_").replace("\\", "_")
     except ValueError:
         return yaml_path.stem
