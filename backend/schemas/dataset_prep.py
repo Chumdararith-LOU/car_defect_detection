@@ -55,3 +55,20 @@ class ResplitResponse(BaseModel):
     dataset_id: str
     new_structure: SplitStructure
     message: str
+
+
+class TileRequest(BaseModel):
+    new_dataset_id: str
+    tile_size: int = Field(
+        default=1024, ge=0, description="0 triggers adaptive 2x2 halving"
+    )
+    overlap: float = Field(default=0.15, ge=0.0, le=0.9)
+    min_area_ratio: float = Field(default=0.01, ge=0.0, le=1.0)
+
+
+class TileResponse(BaseModel):
+    success: bool
+    original_dataset_id: str
+    new_dataset_id: str
+    tiles_generated: int
+    message: str

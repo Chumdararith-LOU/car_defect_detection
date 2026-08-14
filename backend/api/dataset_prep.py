@@ -6,7 +6,8 @@ from services.dataset_prep import (
     import_dataset_zip,
     resplit_dataset,
 )
-from schemas.dataset_prep import ResplitRequest
+from services.dataset_tiling import tile_dataset
+from schemas.dataset_prep import ResplitRequest, TileRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["dataset-prep"])
@@ -64,3 +65,22 @@ def api_resplit_dataset(dataset_id: str, body: ResplitRequest):
     except Exception as e:
         logger.exception("Resplit failed")
         raise HTTPException(status_code=500, detail=f"Resplit failed: {str(e)}")
+
+
+@router.post("/api/datasets/{dataset_id}/tile")
+def api_tile_dataset(dataset_id: str, body: TileRequest):
+    """Create a tiled version of a dataset.
+    Set tile_size=0 for legacy 2x2 adaptive halving (Stage 1 SOD)."""
+    try:
+        return tile_dataset(
+            original_id=dataset_id,
+            new_id=body.new_dataset_id,
+            tile_size=body.tile_size,
+            overlap=body.overlap,
+            min_area_ratio=body.min_area_ratio,
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.exception("Tiling failed")
+        raise HTTPException(status_code=500, detail=f"Tiling failed: {str(e)}")
