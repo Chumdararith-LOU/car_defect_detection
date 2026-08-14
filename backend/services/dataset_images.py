@@ -175,7 +175,7 @@ def parse_yolo_labels(
     dataset_id: str, filename: str, split: str = "train"
 ) -> list[dict]:
     """Parse YOLO labels (instance seg) or semantic masks (Stage 1) into annotations."""
-    class_names = _get_class_names(dataset_id)
+    class_names = get_class_names(dataset_id)
 
     # 1. Try YOLO instance segmentation (.txt)
     label_path = get_label_path(dataset_id, filename, split)
@@ -270,7 +270,7 @@ def _parse_semantic_mask(mask_path: Path, class_names: list[str]) -> list[dict]:
         return []
 
 
-def _get_class_names(dataset_id: str) -> list[str]:
+def get_class_names(dataset_id: str) -> list[str]:
     """Get class names for a dataset from the registry."""
     from services.dataset_registry import get_dataset_detail
 
@@ -278,3 +278,99 @@ def _get_class_names(dataset_id: str) -> list[str]:
     if detail is None:
         return []
     return detail.class_names
+
+
+def reclassify_annotation(
+    dataset_id: str,
+    filename: str,
+    annotation_index: int,
+    new_class_id: int,
+    split: str = "train",
+) -> dict:
+    """Change the class_id of a specific annotation in a YOLO label file.
+
+    Returns:
+        {"success": True, "message": "..."} or raises ValueError.
+    """
+    label_path = get_label_path(dataset_id, filename, split)
+    if label_path is None:
+        raise ValueError(
+            "This dataset does not have YOLO label files. "
+            "Semantic mask datasets (Stage 1) do not support reclassification."
+        )
+
+    with open(label_path, "r") as f:
+        lines = f.readlines()
+
+    if annotation_index < 0 or annotation_index >= len(lines):
+        raise ValueError(
+            f"Annotation index {annotation_index} out of range "
+            f"(file has {len(lines)} lines)."
+        )
+
+    parts = lines[annotation_index].strip().split()
+    if len(parts) < 7:
+        raise ValueError("Label line is malformed (too few coordinates).")
+
+    old_class_id = int(parts[0])
+    parts[0] = str(new_class_id)
+    lines[annotation_index] = " ".join(parts) + "\n"
+
+    with open(label_path, "w") as f:
+        f.writelines(lines)
+
+    class_names = get_class_names(dataset_id)
+    old_name = (
+        class_names[old_class_id]
+        if old_class_id < len(class_names)
+        else f"class_{old_class_id}"
+    )
+    new_name = (
+        class_names[new_class_id]
+        if new_class_id < len(class_names)
+        else f"class_{new_class_id}"
+    )
+
+    return {
+        "success": True,
+        "message": f"Reclassified annotation {annotation_index}: {old_name} → {new_name}",
+        "old_class_id": old_class_id,
+        "new_class_id": new_class_id,
+    }
+
+
+def delete_annotation(
+    dataset_id: str,
+    filename: str,
+    annotation_index: int,
+    split: str = "train",
+) -> dict:
+    """Delete a specific annotation line from a YOLO label file (removes false positives)."""
+    label_path = get_label_path(dataset_id, filename, split)
+    if label_path is None:
+        raise ValueError(
+            "This dataset does not have YOLO label files. "
+            "Semantic mask datasets (Stage 1) do not support annotation deletion."
+        )
+
+    with open(label_path, "r") as f:
+        lines = f.readlines()
+
+    if annotation_index < 0 or annotation_index >= len(lines):
+        raise ValueError(
+            f"Annotation index {annotation_index} out of range "
+            f"(file has {len(lines)} lines)."
+        )
+
+    # Remove the line
+    deleted_line = lines.pop(annotation_index)
+
+    # Write back (if empty, it writes an empty file, keeping it as a hard negative)
+    with open(label_path, "w") as f:
+        f.writelines(lines)
+
+    return {
+        "success": True,
+        "message": f"Deleted annotation {annotation_index} from {filename}",
+        "deleted_line": deleted_line.strip(),
+    }
