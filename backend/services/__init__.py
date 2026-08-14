@@ -12,7 +12,11 @@ from .stage1 import run_prescreen
 from .stage2_direct import run_direct_inference
 from .stage2_sahi import run_sahi_inference
 from .stage3 import run_panel_inference
-from .stage4 import assign_defects_to_panels, rescue_unclassified_anomalies
+from .stage4 import (
+    assign_defects_to_panels,
+    extract_stage1_blobs,
+    rescue_unclassified_anomalies,
+)
 
 logger = logging.getLogger("Orchestrator")
 
@@ -113,6 +117,9 @@ def run_inspection(
         s1_result["binary_mask"], defects, panels, inspection_id
     )
     suppressed_detections.extend(suppressed_blobs)
+    stage1_blobs = extract_stage1_blobs(
+        s1_result["binary_mask"], inspection_id, panels=panels
+    )
 
     inspection_status = "FAIL" if len(defects) > 0 else "PASS"
 
@@ -143,6 +150,7 @@ def run_inspection(
         panels=payload_panels,
         unclassified_anomalies=unclassified_anomalies,
         suppressed_detections=suppressed_detections,
+        stage1_blobs=stage1_blobs,
     )
 
 

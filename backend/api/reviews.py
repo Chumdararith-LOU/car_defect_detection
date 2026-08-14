@@ -1,7 +1,7 @@
 from typing import List
 
 from fastapi import APIRouter, HTTPException, status
-
+from fastapi.responses import Response
 from schemas.review import ReviewCreate, ReviewResponse, ReviewUpdate
 from services.review_db import review_db
 
@@ -46,3 +46,11 @@ def update_review(review_id: int, payload: ReviewUpdate) -> ReviewResponse:
     if row is None:
         raise HTTPException(status_code=404, detail="Review not found")
     return ReviewResponse(**row)
+
+
+@router.delete("/reviews/{review_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_review(review_id: int) -> Response:
+    deleted = review_db.delete_review(review_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Review not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

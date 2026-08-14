@@ -35,7 +35,16 @@ class SuppressedDetection(BaseModel):
     bbox: List[float]
     polygon: Optional[List[List[float]]] = None
     panel: Optional[str] = "Unknown"
-    reason: str  # e.g., "tire", "non_car_context"
+    reason: str
+
+
+class Stage1Blob(BaseModel):
+    """Raw Stage 1 saliency blob (always in payload for the S1 view)."""
+
+    id: str
+    bbox: List[float]  # [x1, y1, x2, y2] normalized 0-1
+    polygon: Optional[List[List[float]]] = None
+    area_ratio: float = 0.0
 
 
 class Defect(BaseModel):
@@ -66,3 +75,4 @@ class InspectionPayload(BaseModel):
     defects: List[Defect]
     unclassified_anomalies: List[UnclassifiedAnomaly] = []
     suppressed_detections: List[SuppressedDetection] = []
+    stage1_blobs: List[Stage1Blob] = []

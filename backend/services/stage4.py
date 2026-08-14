@@ -5,7 +5,7 @@ import numpy as np
 from shapely.geometry import Polygon, box as shapely_box
 from shapely.ops import unary_union
 
-from schemas.inspection import SuppressedDetection, UnclassifiedAnomaly
+from schemas.inspection import Stage1Blob, SuppressedDetection, UnclassifiedAnomaly
 
 logger = logging.getLogger("Stage4")
 
@@ -235,15 +235,11 @@ def assign_defects_to_panels(defects, panels, iod_threshold=0.1):
 
 
 def rescue_unclassified_anomalies(binary_mask, defects, panels, inspection_id):
-    """Routes Stage 1 saliency blobs to unclassified_anomalies or suppressed.
-
-    Returns (anomalies, suppressed_blobs). Blobs are never added to defects.
-    """
+    """Routes Stage 1 saliency blobs to unclassified_anomalies or suppressed."""
     anomalies = []
     suppressed_blobs = []
     if binary_mask is None:
         return anomalies, suppressed_blobs
-
     mask = np.ascontiguousarray(binary_mask.astype(np.uint8))
     img_h, img_w = mask.shape[:2]
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -255,22 +251,23 @@ def rescue_unclassified_anomalies(binary_mask, defects, panels, inspection_id):
         shape = _to_polygon(panel.get("polygon", []))
         if shape is not None:
             panel_shapes.append((panel.get("label"), shape))
-
     car_context, tire_mask = build_car_context(panel_shapes)
-    if car_context is None or car_context.area < MIN_CAR_CONTEXT_AREA:
-        return anomalies, suppressed_blobs
+    low_context = car_context is None or car_context.area < MIN_CAR_CONTEXT_AREA
 
     defect_shapes = [_to_polygon(_get_field(d, "polygon") or []) for d in defects]
 
     for contour in contours:
-        area = float(cv2.contourArea(contour))
-        if area < RESCUE_MIN_AREA_RATIO * img_w * img_h:
+        area_px = float(cv2.contourArea(contour))
+        if area_px < RESCUE_MIN_AREA_RATIO * img_w * img_h:
             continue
 
-        pts = contour.squeeze()
-        if pts.ndim != 2:
+        raw_pts = contour.squeeze()
+        if raw_pts.ndim != 2 or len(raw_pts) < 3:
             continue
-        blob = _to_polygon(pts.tolist())
+
+        # CRITICAL: Normalize to 0-1 space BEFORE building Shapely polygon
+        norm_pts = [[float(p[0]) / img_w, float(p[1]) / img_h] for p in raw_pts]
+        blob = _to_polygon(norm_pts)
         if blob is None:
             continue
 
@@ -290,15 +287,26 @@ def rescue_unclassified_anomalies(binary_mask, defects, panels, inspection_id):
         if matched:
             continue
 
-        x1, y1, w_box, h_box = cv2.boundingRect(contour)
         norm_bbox = [
-            float(x1) / img_w,
-            float(y1) / img_h,
-            float(x1 + w_box) / img_w,
-            float(y1 + h_box) / img_h,
+            min(p[0] for p in norm_pts),
+            min(p[1] for p in norm_pts),
+            max(p[0] for p in norm_pts),
+            max(p[1] for p in norm_pts),
         ]
-        norm_polygon = [[float(p[0]) / img_w, float(p[1]) / img_h] for p in pts]
         blob_id = f"{inspection_id}_UA_{len(anomalies) + len(suppressed_blobs):03d}"
+
+        if low_context:
+            anomalies.append(
+                UnclassifiedAnomaly(
+                    id=blob_id,
+                    confidence=0.85,
+                    bbox=norm_bbox,
+                    polygon=norm_pts,
+                    panel="Unknown",
+                    reason="stage1_rescue",
+                )
+            )
+            continue
 
         tire_ratio = 0.0
         if tire_mask is not None:
@@ -306,6 +314,7 @@ def rescue_unclassified_anomalies(binary_mask, defects, panels, inspection_id):
                 tire_ratio = float(blob.intersection(tire_mask).area / blob.area)
             except Exception:
                 tire_ratio = 0.0
+
         if tire_ratio >= TIRE_IOS_THRESHOLD:
             suppressed_blobs.append(
                 SuppressedDetection(
@@ -313,7 +322,7 @@ def rescue_unclassified_anomalies(binary_mask, defects, panels, inspection_id):
                     predicted_class="anomaly",
                     confidence=0.85,
                     bbox=norm_bbox,
-                    polygon=norm_polygon,
+                    polygon=norm_pts,
                     panel="Unknown",
                     reason="tire",
                 )
@@ -325,17 +334,16 @@ def rescue_unclassified_anomalies(binary_mask, defects, panels, inspection_id):
             car_ratio = float(blob.intersection(car_context).area / blob.area)
         except Exception:
             car_ratio = 0.0
+
         if car_ratio >= CAR_CONTEXT_IOD_THRESHOLD:
-            best_iod = 0.0
-            best_label = None
+            best_iod, best_label = 0.0, None
             for label, panel_shape in panel_shapes:
                 try:
                     iod = float(blob.intersection(panel_shape).area / blob.area)
                 except Exception:
                     iod = 0.0
                 if iod > best_iod:
-                    best_iod = iod
-                    best_label = label
+                    best_iod, best_label = iod, label
             panel_id = (
                 LABEL_TO_PANEL_ID.get(best_label, "Unknown")
                 if best_iod >= CONTAINMENT_THRESHOLD and best_label
@@ -346,7 +354,7 @@ def rescue_unclassified_anomalies(binary_mask, defects, panels, inspection_id):
                     id=blob_id,
                     confidence=0.85,
                     bbox=norm_bbox,
-                    polygon=norm_polygon,
+                    polygon=norm_pts,
                     panel=panel_id,
                     reason="stage1_rescue",
                 )
@@ -358,7 +366,7 @@ def rescue_unclassified_anomalies(binary_mask, defects, panels, inspection_id):
                     predicted_class="anomaly",
                     confidence=0.85,
                     bbox=norm_bbox,
-                    polygon=norm_polygon,
+                    polygon=norm_pts,
                     panel="Unknown",
                     reason="non_car_context",
                 )
@@ -370,3 +378,73 @@ def rescue_unclassified_anomalies(binary_mask, defects, panels, inspection_id):
         len(suppressed_blobs),
     )
     return anomalies, suppressed_blobs
+
+
+def extract_stage1_blobs(binary_mask, inspection_id, panels=None, max_blobs=25):
+    """Extracts Stage 1 saliency blobs CLIPPED to the Stage 3 car context."""
+    blobs = []
+    if binary_mask is None:
+        return blobs
+    mask = np.ascontiguousarray(binary_mask.astype(np.uint8))
+    img_h, img_w = mask.shape[:2]
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return blobs
+
+    car_context = None
+    if panels:
+        panel_shapes = []
+        for panel in panels:
+            shape = _to_polygon(panel.get("polygon", []))
+            if shape is not None:
+                panel_shapes.append((panel.get("label"), shape))
+        car_context, _ = build_car_context(panel_shapes)
+
+    for i, contour in enumerate(contours):
+        area_px = float(cv2.contourArea(contour))
+        if area_px < RESCUE_MIN_AREA_RATIO * img_w * img_h:
+            continue
+
+        raw_pts = contour.squeeze()
+        if raw_pts.ndim != 2 or len(raw_pts) < 3:
+            continue
+
+        # CRITICAL: Normalize to 0-1 space immediately
+        norm_pts = [[float(p[0]) / img_w, float(p[1]) / img_h] for p in raw_pts]
+        blob = _to_polygon(norm_pts)
+        if blob is None:
+            continue
+
+        if car_context is not None:
+            try:
+                clipped = blob.intersection(car_context)
+            except Exception:
+                clipped = blob
+            if clipped.is_empty or clipped.area <= 0:
+                continue
+            if clipped.geom_type == "MultiPolygon":
+                clipped = max(clipped.geoms, key=lambda g: g.area)
+            use_shape = clipped
+        else:
+            use_shape = blob
+
+        coords = list(use_shape.exterior.coords)[:-1]
+        if len(coords) > 60:
+            step = max(1, len(coords) // 60)
+            coords = coords[::step]
+
+        xs = [float(x) for x, _ in coords]
+        ys = [float(y) for _, y in coords]
+        if not xs or not ys:
+            continue
+
+        blobs.append(
+            Stage1Blob(
+                id=f"{inspection_id}_S1B_{i:03d}",
+                bbox=[min(xs), min(ys), max(xs), max(ys)],
+                polygon=[[x, y] for x, y in zip(xs, ys)],
+                area_ratio=float(use_shape.area),
+            )
+        )
+    blobs.sort(key=lambda b: b.area_ratio, reverse=True)
+    return blobs[:max_blobs]
