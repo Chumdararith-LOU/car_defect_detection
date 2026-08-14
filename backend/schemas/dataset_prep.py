@@ -41,3 +41,17 @@ class ImportDatasetResponse(BaseModel):
     path: str
     structure: SplitStructure
     message: str
+
+
+class ResplitRequest(BaseModel):
+    train_ratio: float = 0.8
+    val_ratio: float = 0.1
+    test_ratio: float = 0.1
+    seed: int = 42
+
+
+class ResplitResponse(BaseModel):
+    success: bool
+    dataset_id: str
+    new_structure: SplitStructure
+    message: str

@@ -9,9 +9,12 @@ Supported physical layouts (auto-detected):
 
 import io
 import logging
+import random
 import shutil
 import zipfile
 from pathlib import Path
+
+import yaml
 
 from schemas.dataset_prep import (
     DetectedSplit,
@@ -203,4 +206,132 @@ def detect_dataset_structure(dataset_id: str) -> SplitStructure:
     root = DATA_PROCESSED_DIR / dataset_id
     if not root.exists():
         raise ValueError(f"Dataset '{dataset_id}' not found at {root}")
+    return _detect(root, dataset_id)
+
+
+def resplit_dataset(
+    dataset_id: str,
+    train_ratio: float,
+    val_ratio: float,
+    test_ratio: float,
+    seed: int,
+) -> SplitStructure:
+    """Re-split a dataset into train/val/test using image-level split.
+    Normalizes any layout into the standard ultralytics layout."""
+    root = DATA_PROCESSED_DIR / dataset_id
+    if not root.exists():
+        raise ValueError(f"Dataset '{dataset_id}' not found at {root}")
+
+    if abs((train_ratio + val_ratio + test_ratio) - 1.0) > 1e-5:
+        raise ValueError("Ratios must sum to 1.0")
+
+    # 1. Find existing data.yaml to preserve class names
+    data_yaml = _find_data_yaml(root)
+    yaml_data = {}
+    if data_yaml:
+        try:
+            with open(data_yaml, "r") as f:
+                yaml_data = yaml.safe_load(f) or {}
+        except Exception:
+            pass
+
+    # 2. Gather all (image, label) pairs
+    pairs = []
+    for img_path in root.rglob("*"):
+        if img_path.is_file() and img_path.suffix.lower() in IMAGE_EXTENSIONS:
+            # Avoid picking up files from temp dirs if a previous run crashed
+            if "_temp_resplit" in str(img_path):
+                continue
+
+            rel_to_root = img_path.relative_to(root)
+            parts = list(rel_to_root.parts)
+
+            label_path = None
+            if "images" in parts:
+                parts[parts.index("images")] = "labels"
+                label_path = root / Path(*parts).with_suffix(".txt")
+            else:
+                label_path = img_path.with_suffix(".txt")
+
+            if label_path and label_path.exists():
+                pairs.append((img_path, label_path))
+
+    if not pairs:
+        raise ValueError(f"No valid image/label pairs found in '{dataset_id}'")
+
+    # 3. Shuffle and split
+    random.seed(seed)
+    random.shuffle(pairs)
+
+    total = len(pairs)
+    train_end = int(total * train_ratio)
+    val_end = train_end + int(total * val_ratio)
+
+    splits_map = {
+        "train": pairs[:train_end],
+        "val": pairs[train_end:val_end],
+        "test": pairs[val_end:],
+    }
+
+    # 4. Move files to new structure via temp staging
+    temp_dir = root / "_temp_resplit"
+    temp_dir.mkdir(exist_ok=True)
+
+    for split_name, pair_list in splits_map.items():
+        if not pair_list:
+            continue
+        for img_path, lbl_path in pair_list:
+            temp_img = temp_dir / f"{split_name}_{img_path.name}"
+            temp_lbl = temp_dir / f"{split_name}_{lbl_path.name}"
+            shutil.move(str(img_path), str(temp_img))
+            shutil.move(str(lbl_path), str(temp_lbl))
+
+    for split in ("train", "val", "test"):
+        (root / "images" / split).mkdir(parents=True, exist_ok=True)
+        (root / "labels" / split).mkdir(parents=True, exist_ok=True)
+
+    for split_name, pair_list in splits_map.items():
+        if not pair_list:
+            continue
+        target_img_dir = root / "images" / split_name
+        target_lbl_dir = root / "labels" / split_name
+        for img_path, lbl_path in pair_list:
+            temp_img = temp_dir / f"{split_name}_{img_path.name}"
+            temp_lbl = temp_dir / f"{split_name}_{lbl_path.name}"
+            shutil.move(str(temp_img), str(target_img_dir / img_path.name))
+            shutil.move(str(temp_lbl), str(target_lbl_dir / lbl_path.name))
+
+    # Cleanup empty source dirs
+    for split in ("train", "val", "test"):
+        for subdir in ("images", "labels"):
+            d = root / subdir / split
+            if d.exists() and not any(d.iterdir()):
+                try:
+                    d.rmdir()
+                except OSError:
+                    pass
+
+    if temp_dir.exists() and not any(temp_dir.iterdir()):
+        try:
+            temp_dir.rmdir()
+        except OSError:
+            pass
+
+    # 5. Write data.yaml
+    names = yaml_data.get("names", {})
+    nc = yaml_data.get("nc", len(names) if isinstance(names, dict) else 0)
+
+    yaml_content = {
+        "path": str(root.resolve()),
+        "train": "images/train",
+        "val": "images/val",
+        "test": "images/test",
+        "nc": nc,
+        "names": names,
+    }
+
+    with open(root / "data.yaml", "w") as f:
+        yaml.dump(yaml_content, f, default_flow_style=False, sort_keys=False)
+
+    # 6. Re-detect and return new structure
     return _detect(root, dataset_id)

@@ -1,7 +1,12 @@
 import logging
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from services.dataset_prep import detect_dataset_structure, import_dataset_zip
+from services.dataset_prep import (
+    detect_dataset_structure,
+    import_dataset_zip,
+    resplit_dataset,
+)
+from schemas.dataset_prep import ResplitRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["dataset-prep"])
@@ -35,3 +40,27 @@ def api_split_structure(dataset_id: str):
     except Exception as e:
         logger.exception("Split detection failed")
         raise HTTPException(status_code=500, detail=f"Split detection failed: {str(e)}")
+
+
+@router.post("/api/datasets/{dataset_id}/resplit")
+def api_resplit_dataset(dataset_id: str, body: ResplitRequest):
+    """Re-split a dataset into train/val/test using image-level split."""
+    try:
+        new_structure = resplit_dataset(
+            dataset_id=dataset_id,
+            train_ratio=body.train_ratio,
+            val_ratio=body.val_ratio,
+            test_ratio=body.test_ratio,
+            seed=body.seed,
+        )
+        return {
+            "success": True,
+            "dataset_id": dataset_id,
+            "new_structure": new_structure,
+            "message": f"Re-split '{dataset_id}' into train/val/test.",
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.exception("Resplit failed")
+        raise HTTPException(status_code=500, detail=f"Resplit failed: {str(e)}")
