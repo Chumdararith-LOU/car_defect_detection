@@ -159,13 +159,20 @@ def _detect(root: Path, dataset_id: str) -> SplitStructure:
 
 
 def _maybe_unwrap_single_folder(root: Path) -> None:
-    """If extraction produced exactly one wrapper folder, lift its contents up."""
-    entries = [e for e in root.iterdir() if not e.name.startswith(".")]
+    """If extraction produced exactly one wrapper folder, lift its contents up.
+    Filters out macOS metadata folders like __MACOSX."""
+    entries = [
+        e for e in root.iterdir() if not e.name.startswith(".") and e.name != "__MACOSX"
+    ]
     if len(entries) == 1 and entries[0].is_dir():
         inner = entries[0]
         for item in inner.iterdir():
             shutil.move(str(item), str(root / item.name))
         inner.rmdir()
+    # Also clean up __MACOSX if it exists
+    macosx_dir = root / "__MACOSX"
+    if macosx_dir.exists():
+        shutil.rmtree(macosx_dir)
 
 
 def import_dataset_zip(version_name: str, zip_bytes: bytes) -> ImportDatasetResponse:
