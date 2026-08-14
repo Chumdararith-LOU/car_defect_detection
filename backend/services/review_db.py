@@ -74,10 +74,10 @@ class ReviewDB:
 
     def delete_review(self, review_id: int) -> bool:
         """Deletes a review by ID. Returns True if a row was deleted."""
-        cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM reviews WHERE id = ?", (review_id,))
-        self.conn.commit()
-        return cursor.rowcount > 0
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM reviews WHERE id = ?", (review_id,))
+            conn.commit()
+            return cursor.rowcount > 0
 
     def update_review(
         self, review_id: int, updates: Dict[str, Any]
