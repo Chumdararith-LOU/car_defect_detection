@@ -17,7 +17,7 @@ async def inspect_vehicle(
     stage2_model_name: str = Form(None),
     stage2_mode: str = Form("direct"),
     stage2_preset: str = Form("balanced"),
-    stage2_conf: float = Form(0.25),
+    stage2_conf: float = Form(0.15),
     device: str = Form("auto"),
 ):
     stage1_model = model_manager.get_model(model_name, stage="stage1")
@@ -40,6 +40,12 @@ async def inspect_vehicle(
     try:
         contents = await file.read()
         img_np = process_uploaded_image(contents)
+
+        if not stage2_model_name:
+            available_s2 = model_manager.list_available_models(stage="stage2")
+            if available_s2:
+                stage2_model_name = available_s2[0]
+                logger.info(f"Auto-resolved Stage 2 model: {stage2_model_name}")
 
         stage2_model_path = None
         if stage2_model_name:

@@ -27,7 +27,7 @@ def run_inspection(
     stage2_model_path: str | None = None,
     stage2_mode: str = "direct",
     stage2_preset: str = "balanced",
-    stage2_conf: float = 0.25,
+    stage2_conf: float = 0.15,
     device: str = "auto",
     model=None,
     **kwargs,

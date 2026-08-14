@@ -36,7 +36,7 @@ LABEL_TO_PANEL_ID = {
 
 TIRE_LABEL_KEYWORDS = ("wheel", "tire")
 TIRE_IOS_THRESHOLD = 0.50
-CAR_CONTEXT_IOD_THRESHOLD = 0.30
+CAR_CONTEXT_IOD_THRESHOLD = 0.20
 CONTAINMENT_THRESHOLD = 0.50
 RESCUE_OVERLAP_THRESHOLD = 0.30
 RESCUE_MIN_AREA_RATIO = 0.0005
@@ -171,6 +171,20 @@ def assign_defects_to_panels(defects, panels, iod_threshold=0.1):
                     )
                 except Exception:
                     tire_iod = 0.0
+            car_iod = 0.0
+            try:
+                car_iod = float(
+                    defect_shape.intersection(car_context).area / defect_shape.area
+                )
+            except Exception:
+                car_iod = 0.0
+            print(
+                f"DEBUG_S4 class={_get_field(defect, 'defect_class')} "
+                f"conf={float(_get_field(defect, 'confidence') or 0.0):.2f} "
+                f"best_label={best_label} best_iod={best_iod:.2f} "
+                f"tire_iod={tire_iod:.2f} car_iod={car_iod:.2f}",
+                flush=True,
+            )
             if tire_iod >= TIRE_IOS_THRESHOLD:
                 suppressed.append(
                     _to_suppressed(
@@ -184,13 +198,6 @@ def assign_defects_to_panels(defects, panels, iod_threshold=0.1):
                     )
                 )
                 continue
-            car_iod = 0.0
-            try:
-                car_iod = float(
-                    defect_shape.intersection(car_context).area / defect_shape.area
-                )
-            except Exception:
-                car_iod = 0.0
             if car_iod < CAR_CONTEXT_IOD_THRESHOLD:
                 suppressed.append(_to_suppressed(defect, "Unknown", "non_car_context"))
                 continue
