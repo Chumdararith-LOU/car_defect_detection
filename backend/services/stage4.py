@@ -2,7 +2,7 @@ import logging
 
 import cv2
 import numpy as np
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, box as shapely_box
 from shapely.ops import unary_union
 
 from schemas.inspection import SuppressedDetection, UnclassifiedAnomaly
@@ -171,20 +171,7 @@ def assign_defects_to_panels(defects, panels, iod_threshold=0.1):
                     )
                 except Exception:
                     tire_iod = 0.0
-            car_iod = 0.0
-            try:
-                car_iod = float(
-                    defect_shape.intersection(car_context).area / defect_shape.area
-                )
-            except Exception:
-                car_iod = 0.0
-            print(
-                f"DEBUG_S4 class={_get_field(defect, 'defect_class')} "
-                f"conf={float(_get_field(defect, 'confidence') or 0.0):.2f} "
-                f"best_label={best_label} best_iod={best_iod:.2f} "
-                f"tire_iod={tire_iod:.2f} car_iod={car_iod:.2f}",
-                flush=True,
-            )
+
             if tire_iod >= TIRE_IOS_THRESHOLD:
                 suppressed.append(
                     _to_suppressed(
@@ -198,6 +185,27 @@ def assign_defects_to_panels(defects, panels, iod_threshold=0.1):
                     )
                 )
                 continue
+
+            bbox = _get_field(defect, "bbox") or _get_field(defect, "global_bbox_xyxy")
+            car_iod = 0.0
+            if bbox and len(bbox) == 4:
+                try:
+                    bbox_shape = shapely_box(
+                        float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])
+                    )
+                    car_iod = float(
+                        bbox_shape.intersection(car_context).area / bbox_shape.area
+                    )
+                except Exception:
+                    car_iod = 0.0
+            else:
+                try:
+                    car_iod = float(
+                        defect_shape.intersection(car_context).area / defect_shape.area
+                    )
+                except Exception:
+                    car_iod = 0.0
+
             if car_iod < CAR_CONTEXT_IOD_THRESHOLD:
                 suppressed.append(_to_suppressed(defect, "Unknown", "non_car_context"))
                 continue
