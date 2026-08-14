@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.health import router as health_router
 from api.host import router as host_router
 from api.inspect import router as inspect_router
+from api.datasets import router as datasets_router
 from api.models import router as models_router
 from api.reviews import router as reviews_router
 from api.system import router as system_router
@@ -39,3 +40,4 @@ app.include_router(system_router)
 app.include_router(models_router)
 app.include_router(inspect_router)
 app.include_router(reviews_router)
+app.include_router(datasets_router)
