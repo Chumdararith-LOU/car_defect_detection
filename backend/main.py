@@ -11,6 +11,7 @@ from api.reviews import router as reviews_router
 from api.dataset_import import router as dataset_import_router
 from api.system import router as system_router
 from core.config import settings
+from api.dataset_prep import router as dataset_prep_router
 
 app = FastAPI(title=settings.app_name)
 
@@ -44,3 +45,4 @@ app.include_router(reviews_router)
 app.include_router(datasets_router)
 app.include_router(dataset_images_router)
 app.include_router(dataset_import_router)
+app.include_router(dataset_prep_router)
