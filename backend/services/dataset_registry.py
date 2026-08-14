@@ -404,3 +404,33 @@ def run_leakage_audit(dataset_id: str) -> Optional[LeakageAuditResult]:
         )
 
     return None
+
+
+def delete_dataset(dataset_id: str) -> dict:
+    """Permanently delete a dataset directory and all its contents."""
+    import shutil
+
+    for yaml_path in _find_dataset_yamls():
+        if _generate_dataset_id(yaml_path) != dataset_id:
+            continue
+
+        yaml_data = _parse_dataset_yaml(yaml_path)
+        if not yaml_data:
+            continue
+
+        root_path = _resolve_root_path(yaml_path, yaml_data)
+
+        # Safety check: ONLY allow deletion inside DATA_PROCESSED_DIR
+        try:
+            root_path.resolve().relative_to(DATA_PROCESSED_DIR.resolve())
+        except ValueError:
+            raise ValueError(
+                f"Refusing to delete '{root_path}': "
+                "dataset root is outside of data/processed/."
+            )
+
+        shutil.rmtree(root_path)
+        logger.info("Deleted dataset '%s' at %s", dataset_id, root_path)
+        return {"success": True, "message": f"Deleted dataset '{dataset_id}'"}
+
+    raise ValueError(f"Dataset '{dataset_id}' not found")

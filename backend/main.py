@@ -8,6 +8,7 @@ from api.dataset_images import router as dataset_images_router
 from api.datasets import router as datasets_router
 from api.models import router as models_router
 from api.reviews import router as reviews_router
+from api.dataset_import import router as dataset_import_router
 from api.system import router as system_router
 from core.config import settings
 
@@ -16,7 +17,6 @@ app = FastAPI(title=settings.app_name)
 
 @app.on_event("startup")
 def init_review_db() -> None:
-    # Importing services.review_db creates the data dir + schema on startup.
     from services.review_db import review_db  # noqa: F401
 
 
@@ -43,3 +43,4 @@ app.include_router(inspect_router)
 app.include_router(reviews_router)
 app.include_router(datasets_router)
 app.include_router(dataset_images_router)
+app.include_router(dataset_import_router)

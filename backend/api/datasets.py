@@ -11,6 +11,7 @@ from schemas.dataset import (
 )
 from services.dataset_builder import build_dataset_from_reviews
 from services.dataset_registry import (
+    delete_dataset,
     get_dataset_detail,
     list_datasets,
     run_leakage_audit,
@@ -45,6 +46,19 @@ def api_audit_dataset(dataset_id: str):
     if result is None:
         raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found")
     return result
+
+
+@router.delete("/api/datasets/{dataset_id}")
+def api_delete_dataset(dataset_id: str):
+    """Permanently delete a dataset directory and all its contents."""
+    try:
+        result = delete_dataset(dataset_id)
+        return result
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.exception("Delete dataset failed")
+        raise HTTPException(status_code=500, detail=f"Delete dataset failed: {str(e)}")
 
 
 @router.post("/api/datasets/build", response_model=DatasetBuildResponse)
