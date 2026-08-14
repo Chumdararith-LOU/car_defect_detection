@@ -1,7 +1,6 @@
 import logging
 from datetime import datetime, timezone
 
-import cv2
 import numpy as np
 
 from core.model_manager import model_manager
@@ -104,57 +103,16 @@ def run_inspection(
     else:
         logger.warning("Stage 3 model not available, skipping panel segmentation")
 
-    # Fallback synthetic anomaly blob derived from the Stage 1 saliency mask
-    if s1_result["binary_mask"] is not None:
-        binary_mask = s1_result["binary_mask"]
-        contours, _ = cv2.findContours(
-            binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
-
-        if contours:
-            largest_contour = max(contours, key=cv2.contourArea)
-            x1, y1, w_box, h_box = cv2.boundingRect(largest_contour)
-            x2, y2 = x1 + w_box, y1 + h_box
-            pixel_area = float(cv2.contourArea(largest_contour))
-            pts = largest_contour.squeeze()
-
-            norm_polygon = (
-                [(float(pt[0]) / img_w, float(pt[1]) / img_h) for pt in pts]
-                if len(pts.shape) == 2
-                else []
-            )
-            norm_bbox = (
-                float(x1) / img_w,
-                float(y1) / img_h,
-                float(x2) / img_w,
-                float(y2) / img_h,
-            )
-
-            # Confidence approximation for the anomaly blob
-            confidence = 0.85
-
-            defects.append(
-                Defect(
-                    defect_id=f"{inspection_id}_DEF_000",
-                    defect_class="anomaly",
-                    confidence=confidence,
-                    global_bbox_xyxy=norm_bbox,
-                    polygon=norm_polygon,
-                    assigned_panel="Unknown",
-                    containment_ratio_iod=0.95,
-                    damage_severity_index_dsi=min(0.99, pixel_area / 5000),
-                )
-            )
-
     # --- STAGE 4: IoD FUSION ---
     suppressed_detections = []
     if panels and defects:
         logger.info("Stage 4 | Routing to IoD Fusion...")
         defects, suppressed_detections = assign_defects_to_panels(defects, panels)
 
-    unclassified_anomalies = rescue_unclassified_anomalies(
+    unclassified_anomalies, suppressed_blobs = rescue_unclassified_anomalies(
         s1_result["binary_mask"], defects, panels, inspection_id
     )
+    suppressed_detections.extend(suppressed_blobs)
 
     inspection_status = "FAIL" if len(defects) > 0 else "PASS"
 

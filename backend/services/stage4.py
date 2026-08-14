@@ -3,6 +3,7 @@ import logging
 import cv2
 import numpy as np
 from shapely.geometry import Polygon
+from shapely.ops import unary_union
 
 from schemas.inspection import SuppressedDetection, UnclassifiedAnomaly
 
@@ -33,10 +34,14 @@ LABEL_TO_PANEL_ID = {
     "Roof": "roof",
 }
 
-TIRE_PANEL_IDS = {"front_wheel", "back_wheel"}
-NON_CAR_IOD_THRESHOLD = 0.02
+TIRE_LABEL_KEYWORDS = ("wheel", "tire")
+TIRE_IOS_THRESHOLD = 0.50
+CAR_CONTEXT_IOD_THRESHOLD = 0.30
+CONTAINMENT_THRESHOLD = 0.50
 RESCUE_OVERLAP_THRESHOLD = 0.30
 RESCUE_MIN_AREA_RATIO = 0.0005
+CAR_CONTEXT_CLOSE_DISTANCE = 0.02
+MIN_CAR_CONTEXT_AREA = 0.05
 
 
 def _to_polygon(points):
@@ -73,6 +78,7 @@ def _get_field(defect, key):
 _PYDANTIC_FIELD_MAP = {
     "assigned_panel": "panel",
     "containment_ratio_iod": "iod",
+    "damage_severity_index_dsi": "dsi",
 }
 
 
@@ -98,17 +104,44 @@ def _to_suppressed(defect, panel_id, reason) -> SuppressedDetection:
     )
 
 
+def build_car_context(panel_polygons):
+    """Fuses Stage 3 panel polygons into a single car context mask.
+
+    Returns (car_context, tire_mask). A morphological close (buffer out/in)
+    fills gaps between panels so on-car parts between panels count as car.
+    """
+    all_polys = [p for _, p in panel_polygons if p.is_valid and p.area > 0]
+    if not all_polys:
+        return None, None
+    union = unary_union(all_polys)
+    d = CAR_CONTEXT_CLOSE_DISTANCE
+    car_context = union.buffer(d).buffer(-d)
+    if car_context.is_empty or car_context.area <= 0:
+        car_context = None
+    tire_polys = [
+        p
+        for label, p in panel_polygons
+        if label and any(kw in label.lower() for kw in TIRE_LABEL_KEYWORDS)
+    ]
+    tire_mask = unary_union(tire_polys) if tire_polys else None
+    return car_context, tire_mask
+
+
 def assign_defects_to_panels(defects, panels, iod_threshold=0.1):
     """Assigns each defect to the panel with the highest IoD.
 
-    Returns (kept_defects, suppressed_detections). Defects on tire panels
-    or clearly outside the car are suppressed instead of reported.
+    Returns (kept_defects, suppressed_detections). Suppression uses tire
+    overlap and car-context containment; a defect is never suppressed just
+    because its best panel IoD is low (panel becomes "Unknown" instead).
     """
     panel_shapes = []
     for panel in panels:
         shape = _to_polygon(panel.get("polygon", []))
         if shape is not None:
             panel_shapes.append((panel.get("label"), shape))
+
+    car_context, tire_mask = build_car_context(panel_shapes)
+    low_context = car_context is None or car_context.area < MIN_CAR_CONTEXT_AREA
 
     kept = []
     suppressed = []
@@ -129,55 +162,88 @@ def assign_defects_to_panels(defects, panels, iod_threshold=0.1):
                     best_iod = iod
                     best_label = label
 
-        if best_iod >= iod_threshold and best_label is not None:
+        if not low_context and defect_shape is not None and car_context is not None:
+            tire_iod = 0.0
+            if tire_mask is not None:
+                try:
+                    tire_iod = float(
+                        defect_shape.intersection(tire_mask).area / defect_shape.area
+                    )
+                except Exception:
+                    tire_iod = 0.0
+            if tire_iod >= TIRE_IOS_THRESHOLD:
+                suppressed.append(
+                    _to_suppressed(
+                        defect,
+                        (
+                            LABEL_TO_PANEL_ID.get(best_label, "Unknown")
+                            if best_label
+                            else "Unknown"
+                        ),
+                        "tire",
+                    )
+                )
+                continue
+            car_iod = 0.0
+            try:
+                car_iod = float(
+                    defect_shape.intersection(car_context).area / defect_shape.area
+                )
+            except Exception:
+                car_iod = 0.0
+            if car_iod < CAR_CONTEXT_IOD_THRESHOLD:
+                suppressed.append(_to_suppressed(defect, "Unknown", "non_car_context"))
+                continue
+
+        if best_iod >= CONTAINMENT_THRESHOLD and best_label is not None:
             panel_id = LABEL_TO_PANEL_ID.get(best_label, "Unknown")
         else:
             panel_id = "Unknown"
 
-        if panel_id in TIRE_PANEL_IDS:
-            suppressed.append(_to_suppressed(defect, panel_id, "tire"))
-            continue
-        if panel_id == "Unknown" and best_iod < NON_CAR_IOD_THRESHOLD:
-            suppressed.append(_to_suppressed(defect, "Unknown", "non_car_context"))
-            continue
-
         _set_field(defect, "assigned_panel", panel_id)
         _set_field(defect, "containment_ratio_iod", best_iod)
-        if panel_id != "Unknown":
+        if panel_id == "Unknown":
+            _set_field(defect, "damage_severity_index_dsi", 0.0)
+        else:
             assigned_count += 1
         kept.append(defect)
 
     logger.info(
-        "Stage 4: Assigned %d/%d defects to panels (threshold=%.2f), suppressed %d",
-        assigned_count,
+        "Stage 4: Kept %d/%d defects (assigned %d, suppressed %d, low_context=%s)",
+        len(kept),
         len(defects),
-        iod_threshold,
+        assigned_count,
         len(suppressed),
+        low_context,
     )
     return kept, suppressed
 
 
-def rescue_unclassified_anomalies(
-    binary_mask, defects, panels, inspection_id, iod_threshold=0.1
-):
-    """Extracts Stage 1 saliency blobs not covered by any Stage 2 defect."""
+def rescue_unclassified_anomalies(binary_mask, defects, panels, inspection_id):
+    """Routes Stage 1 saliency blobs to unclassified_anomalies or suppressed.
+
+    Returns (anomalies, suppressed_blobs). Blobs are never added to defects.
+    """
     anomalies = []
+    suppressed_blobs = []
     if binary_mask is None:
-        return anomalies
+        return anomalies, suppressed_blobs
 
     mask = np.ascontiguousarray(binary_mask.astype(np.uint8))
     img_h, img_w = mask.shape[:2]
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
-        return anomalies
+        return anomalies, suppressed_blobs
 
     panel_shapes = []
     for panel in panels:
         shape = _to_polygon(panel.get("polygon", []))
         if shape is not None:
             panel_shapes.append((panel.get("label"), shape))
-    if not panel_shapes:
-        return anomalies
+
+    car_context, tire_mask = build_car_context(panel_shapes)
+    if car_context is None or car_context.area < MIN_CAR_CONTEXT_AREA:
+        return anomalies, suppressed_blobs
 
     defect_shapes = [_to_polygon(_get_field(d, "polygon") or []) for d in defects]
 
@@ -199,49 +265,93 @@ def rescue_unclassified_anomalies(
                 continue
             try:
                 inter = float(blob.intersection(defect_shape).area)
-                union = blob.area + defect_shape.area - inter
-                iou = inter / union if union > 0 else 0.0
+                smaller = min(blob.area, defect_shape.area)
+                ios = inter / smaller if smaller > 0 else 0.0
             except Exception:
-                iou = 0.0
-            if iou >= RESCUE_OVERLAP_THRESHOLD:
+                ios = 0.0
+            if ios >= RESCUE_OVERLAP_THRESHOLD:
                 matched = True
                 break
         if matched:
             continue
 
-        best_iod = 0.0
-        best_label = None
-        for label, panel_shape in panel_shapes:
-            try:
-                iod = float(blob.intersection(panel_shape).area / blob.area)
-            except Exception:
-                iod = 0.0
-            if iod > best_iod:
-                best_iod = iod
-                best_label = label
-
-        if best_iod < iod_threshold or best_label is None:
-            continue
-        panel_id = LABEL_TO_PANEL_ID.get(best_label, "Unknown")
-        if panel_id in TIRE_PANEL_IDS:
-            continue
-
         x1, y1, w_box, h_box = cv2.boundingRect(contour)
-        anomalies.append(
-            UnclassifiedAnomaly(
-                id=f"{inspection_id}_UA_{len(anomalies):03d}",
-                confidence=0.85,
-                bbox=[
-                    float(x1) / img_w,
-                    float(y1) / img_h,
-                    float(x1 + w_box) / img_w,
-                    float(y1 + h_box) / img_h,
-                ],
-                polygon=[[float(p[0]) / img_w, float(p[1]) / img_h] for p in pts],
-                panel=panel_id,
-                reason="stage1_rescue",
-            )
-        )
+        norm_bbox = [
+            float(x1) / img_w,
+            float(y1) / img_h,
+            float(x1 + w_box) / img_w,
+            float(y1 + h_box) / img_h,
+        ]
+        norm_polygon = [[float(p[0]) / img_w, float(p[1]) / img_h] for p in pts]
+        blob_id = f"{inspection_id}_UA_{len(anomalies) + len(suppressed_blobs):03d}"
 
-    logger.info("Stage 4: Rescued %d unclassified anomalies", len(anomalies))
-    return anomalies
+        tire_ratio = 0.0
+        if tire_mask is not None:
+            try:
+                tire_ratio = float(blob.intersection(tire_mask).area / blob.area)
+            except Exception:
+                tire_ratio = 0.0
+        if tire_ratio >= TIRE_IOS_THRESHOLD:
+            suppressed_blobs.append(
+                SuppressedDetection(
+                    id=blob_id,
+                    predicted_class="anomaly",
+                    confidence=0.85,
+                    bbox=norm_bbox,
+                    polygon=norm_polygon,
+                    panel="Unknown",
+                    reason="tire",
+                )
+            )
+            continue
+
+        car_ratio = 0.0
+        try:
+            car_ratio = float(blob.intersection(car_context).area / blob.area)
+        except Exception:
+            car_ratio = 0.0
+        if car_ratio >= CAR_CONTEXT_IOD_THRESHOLD:
+            best_iod = 0.0
+            best_label = None
+            for label, panel_shape in panel_shapes:
+                try:
+                    iod = float(blob.intersection(panel_shape).area / blob.area)
+                except Exception:
+                    iod = 0.0
+                if iod > best_iod:
+                    best_iod = iod
+                    best_label = label
+            panel_id = (
+                LABEL_TO_PANEL_ID.get(best_label, "Unknown")
+                if best_iod >= CONTAINMENT_THRESHOLD and best_label
+                else "Unknown"
+            )
+            anomalies.append(
+                UnclassifiedAnomaly(
+                    id=blob_id,
+                    confidence=0.85,
+                    bbox=norm_bbox,
+                    polygon=norm_polygon,
+                    panel=panel_id,
+                    reason="stage1_rescue",
+                )
+            )
+        else:
+            suppressed_blobs.append(
+                SuppressedDetection(
+                    id=blob_id,
+                    predicted_class="anomaly",
+                    confidence=0.85,
+                    bbox=norm_bbox,
+                    polygon=norm_polygon,
+                    panel="Unknown",
+                    reason="non_car_context",
+                )
+            )
+
+    logger.info(
+        "Stage 4: Rescued %d anomalies, suppressed %d blobs",
+        len(anomalies),
+        len(suppressed_blobs),
+    )
+    return anomalies, suppressed_blobs
