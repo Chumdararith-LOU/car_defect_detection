@@ -33,6 +33,45 @@ LABEL_EXTENSIONS = {".txt"}
 SPLIT_NAMES = ("train", "val", "test")
 
 
+def _find_dataset_root(dataset_id: str) -> Path | None:
+    """Find the actual root path for a dataset ID by scanning data/processed/.
+    Handles nested structures like stage3/car_damages_panel/."""
+    for yaml_file in DATA_PROCESSED_DIR.rglob("*.yaml"):
+        if "archive" in str(yaml_file):
+            continue
+        if any(part.startswith(".") for part in yaml_file.parts):
+            continue
+
+        # Generate ID using same logic as dataset_registry.py
+        try:
+            rel = yaml_file.relative_to(DATA_PROCESSED_DIR)
+            if yaml_file.name in ("data.yaml", "dataset.yaml"):
+                parent_str = str(rel.parent)
+                if parent_str == ".":
+                    gen_id = yaml_file.stem
+                else:
+                    gen_id = parent_str.replace("/", "_").replace("\\", "_")
+            else:
+                gen_id = str(rel.with_suffix("")).replace("/", "_").replace("\\", "_")
+        except ValueError:
+            gen_id = yaml_file.stem
+
+        if gen_id == dataset_id:
+            # Resolve the actual root path
+            with open(yaml_file, "r") as f:
+                import yaml
+
+                yaml_data = yaml.safe_load(f)
+            if yaml_data and "path" in yaml_data:
+                root = Path(yaml_data["path"])
+                if root.exists():
+                    return root
+            # Fallback: YAML file's parent
+            return yaml_file.parent
+
+    return None
+
+
 def _count_files(directory: Path, extensions: set[str]) -> int:
     if not directory.exists() or not directory.is_dir():
         return 0
@@ -210,9 +249,9 @@ def import_dataset_zip(version_name: str, zip_bytes: bytes) -> ImportDatasetResp
 
 def detect_dataset_structure(dataset_id: str) -> SplitStructure:
     """Detect split structure of an existing dataset under data/processed/."""
-    root = DATA_PROCESSED_DIR / dataset_id
-    if not root.exists():
-        raise ValueError(f"Dataset '{dataset_id}' not found at {root}")
+    root = _find_dataset_root(dataset_id)
+    if root is None or not root.exists():
+        raise ValueError(f"Dataset '{dataset_id}' not found")
     return _detect(root, dataset_id)
 
 
@@ -225,10 +264,9 @@ def resplit_dataset(
 ) -> SplitStructure:
     """Re-split a dataset into train/val/test using image-level split.
     Normalizes any layout into the standard ultralytics layout."""
-    root = DATA_PROCESSED_DIR / dataset_id
-    if not root.exists():
-        raise ValueError(f"Dataset '{dataset_id}' not found at {root}")
-
+    root = _find_dataset_root(dataset_id)
+    if root is None or not root.exists():
+        raise ValueError(f"Dataset '{dataset_id}' not found")
     if abs((train_ratio + val_ratio + test_ratio) - 1.0) > 1e-5:
         raise ValueError("Ratios must sum to 1.0")
 

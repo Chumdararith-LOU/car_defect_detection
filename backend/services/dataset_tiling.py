@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 
+from services.dataset_prep import _find_dataset_root
 import cv2
 import yaml
 from shapely.geometry import Polygon, box, MultiPolygon
@@ -153,10 +154,10 @@ def tile_dataset(
     original_id: str, new_id: str, tile_size: int, overlap: float, min_area_ratio: float
 ) -> dict:
     """Create a tiled version of a dataset."""
-    src_root = DATA_PROCESSED_DIR / original_id
+    src_root = _find_dataset_root(original_id)
     dest_root = DATA_PROCESSED_DIR / new_id
 
-    if not src_root.exists():
+    if src_root is None or not src_root.exists():
         raise ValueError(f"Source dataset '{original_id}' not found.")
     if dest_root.exists():
         raise ValueError(f"Destination dataset '{new_id}' already exists.")
