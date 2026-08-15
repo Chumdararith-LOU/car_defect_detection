@@ -4,7 +4,9 @@ from pathlib import Path
 from services.dataset_prep import _find_dataset_root
 import cv2
 import yaml
-from shapely.geometry import Polygon, box, MultiPolygon
+from shapely.geometry import Polygon, box, MultiPolygon, GeometryCollection
+
+from services.dataset_prep import _find_data_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,25 @@ def _process_yolo_labels(lbl_path: Path, W: int, H: int) -> list[tuple[int, Poly
     return polygons
 
 
+def _extract_polygons(geom) -> list[Polygon]:
+    """Extract only Polygon parts from an intersection result.
+    Ignores LineStrings, Points, and empty geometries that can occur
+    when a polygon barely touches a tile boundary."""
+    if isinstance(geom, Polygon):
+        return [geom] if not geom.is_empty else []
+    if isinstance(geom, MultiPolygon):
+        return [p for p in geom.geoms if not p.is_empty]
+    if isinstance(geom, GeometryCollection):
+        polys = []
+        for g in geom.geoms:
+            if isinstance(g, Polygon) and not g.is_empty:
+                polys.append(g)
+            elif isinstance(g, MultiPolygon):
+                polys.extend([p for p in g.geoms if not p.is_empty])
+        return polys
+    return []
+
+
 def _tile_single_image(
     img_path: Path,
     lbl_path: Path,
@@ -119,14 +140,9 @@ def _tile_single_image(
                 if clipped.is_empty:
                     continue
 
-                polys_to_process = (
-                    list(clipped.geoms)
-                    if isinstance(clipped, MultiPolygon)
-                    else [clipped]
-                )
+                polys_to_process = _extract_polygons(clipped)
 
                 for p in polys_to_process:
-                    # Skip tiny fragments caused by clipping
                     if poly.area > 10 and p.area < (poly.area * min_area_ratio):
                         continue
 
@@ -215,12 +231,9 @@ def tile_dataset(
                     min_area_ratio,
                 )
 
-    # Copy/Update data.yaml
-    src_yaml = src_root / "data.yaml"
-    if not src_yaml.exists():
-        src_yaml = src_root / "dataset.yaml"
+    src_yaml = _find_data_yaml(src_root)
 
-    if src_yaml.exists():
+    if src_yaml is not None and src_yaml.exists():
         with open(src_yaml, "r") as f:
             yaml_data = yaml.safe_load(f) or {}
         yaml_data["path"] = str(dest_root.resolve())

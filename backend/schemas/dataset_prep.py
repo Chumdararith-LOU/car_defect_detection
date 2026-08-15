@@ -21,6 +21,7 @@ class DetectedSplit(BaseModel):
     label_count: int
     images_path: str
     labels_path: Optional[str] = None
+    label_format: Optional[str] = None  # "yolo_txt" | "semantic_mask" | None
 
 
 class SplitStructure(BaseModel):

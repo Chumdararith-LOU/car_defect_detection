@@ -30,6 +30,7 @@ DATA_PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
 LABEL_EXTENSIONS = {".txt"}
+MASK_EXTENSIONS = IMAGE_EXTENSIONS
 SPLIT_NAMES = ("train", "val", "test")
 
 
@@ -84,9 +85,11 @@ def _find_data_yaml(root: Path) -> Path | None:
     for cand in ("data.yaml", "dataset.yaml"):
         if (root / cand).exists():
             return root / cand
-    for p in root.rglob("*.yaml"):
-        if p.name in ("data.yaml", "dataset.yaml"):
-            return p
+    root_yamls = sorted(root.glob("*.yaml"))
+    if root_yamls:
+        return root_yamls[0]
+    for p in sorted(root.rglob("*.yaml")):
+        return p
     return None
 
 
@@ -121,74 +124,111 @@ def _finalize(
     )
 
 
+def _find_annotation_dir(img_dir: Path, kind: str) -> Path | None:
+    """Derive an annotation dir by replacing the 'images' path component.
+    root/images/train -> root/labels/train  (kind='labels')
+    root/train/images -> root/train/masks   (kind='masks')"""
+    parts = list(img_dir.parts)
+    for i in range(len(parts) - 1, -1, -1):
+        if parts[i] == "images":
+            parts[i] = kind
+            return Path(*parts)
+    return None
+
+
+def _find_annotation_for_image(img_path: Path) -> tuple[Path | None, str]:
+    """Find the annotation file for an image.
+    Returns (path, kind) where kind is 'labels' (YOLO txt) or 'masks' (semantic)."""
+    # Try YOLO .txt label first
+    lbl_candidate = _find_annotation_dir(img_path, "labels")
+    if lbl_candidate is not None:
+        txt_path = lbl_candidate.with_suffix(".txt")
+        if txt_path.exists():
+            return txt_path, "labels"
+    # Try semantic mask (any image extension)
+    mask_candidate = _find_annotation_dir(img_path, "masks")
+    if mask_candidate is not None:
+        for ext in sorted(IMAGE_EXTENSIONS):
+            mask_path = mask_candidate.with_suffix(ext)
+            if mask_path.exists():
+                return mask_path, "masks"
+    return None, ""
+
+
+def _count_annotations(img_dir: Path) -> tuple[int, str | None, str | None]:
+    """Count annotations for an image dir. Prefers YOLO .txt labels, then
+    falls back to semantic masks. Returns (count, path, format)."""
+    lbl_dir = _find_annotation_dir(img_dir, "labels")
+    if lbl_dir is not None and lbl_dir.is_dir():
+        n = _count_files(lbl_dir, LABEL_EXTENSIONS)
+        if n > 0:
+            return n, str(lbl_dir), "yolo_txt"
+    mask_dir = _find_annotation_dir(img_dir, "masks")
+    if mask_dir is not None and mask_dir.is_dir():
+        n = _count_files(mask_dir, MASK_EXTENSIONS)
+        if n > 0:
+            return n, str(mask_dir), "semantic_mask"
+    if lbl_dir is not None and lbl_dir.is_dir():
+        return 0, str(lbl_dir), "yolo_txt"
+    if mask_dir is not None and mask_dir.is_dir():
+        return 0, str(mask_dir), "semantic_mask"
+    return 0, None, None
+
+
 def _detect(root: Path, dataset_id: str) -> SplitStructure:
     warnings: list[str] = []
     data_yaml = _find_data_yaml(root)
     splits: list[DetectedSplit] = []
 
-    images_root = root / "images"
-    labels_root = root / "labels"
+    def add_split(name: str, img_dir: Path) -> None:
+        count, ann_path, ann_format = _count_annotations(img_dir)
+        splits.append(
+            DetectedSplit(
+                name=name,
+                image_count=_count_files(img_dir, IMAGE_EXTENSIONS),
+                label_count=count,
+                images_path=str(img_dir),
+                labels_path=ann_path,
+                label_format=ann_format,
+            )
+        )
 
-    # ultralytics: images/<split> + labels/<split>
+    images_root = root / "images"
+
+    # ultralytics: images/<split> + (labels/<split> OR masks/<split>)
     if images_root.is_dir():
         for split in SPLIT_NAMES:
             img_dir = images_root / split
             if img_dir.is_dir():
-                lbl_dir = labels_root / split
-                splits.append(
-                    DetectedSplit(
-                        name=split,
-                        image_count=_count_files(img_dir, IMAGE_EXTENSIONS),
-                        label_count=_count_files(lbl_dir, LABEL_EXTENSIONS),
-                        images_path=str(img_dir),
-                        labels_path=str(lbl_dir) if lbl_dir.is_dir() else None,
-                    )
-                )
+                add_split(split, img_dir)
         if splits:
             return _finalize(
                 dataset_id, SplitLayout.ULTRALYTICS, data_yaml, splits, warnings
             )
-
         # images/ with no split subdirs -> unsplit pool
-        splits.append(
-            DetectedSplit(
-                name="all",
-                image_count=_count_files(images_root, IMAGE_EXTENSIONS),
-                label_count=_count_files(labels_root, LABEL_EXTENSIONS),
-                images_path=str(images_root),
-                labels_path=str(labels_root) if labels_root.is_dir() else None,
-            )
-        )
+        add_split("all", images_root)
         return _finalize(dataset_id, SplitLayout.UNSPLIT, data_yaml, splits, warnings)
 
-    # grouped: <split>/images + <split>/labels
+    # grouped: <split>/images + (<split>/labels OR <split>/masks)
     for split in SPLIT_NAMES:
-        grp = root / split
-        if (grp / "images").is_dir():
-            splits.append(
-                DetectedSplit(
-                    name=split,
-                    image_count=_count_files(grp / "images", IMAGE_EXTENSIONS),
-                    label_count=_count_files(grp / "labels", LABEL_EXTENSIONS),
-                    images_path=str(grp / "images"),
-                    labels_path=(
-                        str(grp / "labels") if (grp / "labels").is_dir() else None
-                    ),
-                )
-            )
+        grp_img = root / split / "images"
+        if grp_img.is_dir():
+            add_split(split, grp_img)
     if splits:
         return _finalize(dataset_id, SplitLayout.GROUPED, data_yaml, splits, warnings)
 
     # flat: loose files in root
     img_count = _count_files(root, IMAGE_EXTENSIONS)
     if img_count > 0:
+        txt_count = _count_files(root, LABEL_EXTENSIONS)
         splits.append(
             DetectedSplit(
                 name="all",
                 image_count=img_count,
-                label_count=_count_files(root, LABEL_EXTENSIONS),
+                label_count=txt_count,
                 images_path=str(root),
-                labels_path=str(root),
+                labels_path=str(root) if txt_count > 0 else None,
+                label_format="yolo_txt" if txt_count > 0 else None,
             )
         )
         return _finalize(dataset_id, SplitLayout.FLAT, data_yaml, splits, warnings)
@@ -263,14 +303,15 @@ def resplit_dataset(
     seed: int,
 ) -> SplitStructure:
     """Re-split a dataset into train/val/test using image-level split.
-    Normalizes any layout into the standard ultralytics layout."""
+    Handles both YOLO .txt labels and semantic segmentation masks."""
     root = _find_dataset_root(dataset_id)
     if root is None or not root.exists():
         raise ValueError(f"Dataset '{dataset_id}' not found")
+
     if abs((train_ratio + val_ratio + test_ratio) - 1.0) > 1e-5:
         raise ValueError("Ratios must sum to 1.0")
 
-    # 1. Find existing data.yaml to preserve class names
+    # 1. Find existing yaml to preserve class names + write back in place
     data_yaml = _find_data_yaml(root)
     yaml_data = {}
     if data_yaml:
@@ -280,29 +321,22 @@ def resplit_dataset(
         except Exception:
             pass
 
-    # 2. Gather all (image, label) pairs
-    pairs = []
+    # 2. Gather (image, annotation, kind) tuples
+    pairs: list[tuple[Path, Path, str]] = []
     for img_path in root.rglob("*"):
-        if img_path.is_file() and img_path.suffix.lower() in IMAGE_EXTENSIONS:
-            # Avoid picking up files from temp dirs if a previous run crashed
-            if "_temp_resplit" in str(img_path):
-                continue
-
-            rel_to_root = img_path.relative_to(root)
-            parts = list(rel_to_root.parts)
-
-            label_path = None
-            if "images" in parts:
-                parts[parts.index("images")] = "labels"
-                label_path = root / Path(*parts).with_suffix(".txt")
-            else:
-                label_path = img_path.with_suffix(".txt")
-
-            if label_path and label_path.exists():
-                pairs.append((img_path, label_path))
+        if not img_path.is_file() or img_path.suffix.lower() not in IMAGE_EXTENSIONS:
+            continue
+        # Skip temp leftovers and mask files (masks are images too)
+        if "_temp_resplit" in img_path.parts or "masks" in img_path.parts:
+            continue
+        ann_path, ann_kind = _find_annotation_for_image(img_path)
+        if ann_path is not None:
+            pairs.append((img_path, ann_path, ann_kind))
 
     if not pairs:
-        raise ValueError(f"No valid image/label pairs found in '{dataset_id}'")
+        raise ValueError(f"No valid image/annotation pairs found in '{dataset_id}'")
+
+    has_masks = any(kind == "masks" for _, _, kind in pairs)
 
     # 3. Shuffle and split
     random.seed(seed)
@@ -322,47 +356,47 @@ def resplit_dataset(
     temp_dir = root / "_temp_resplit"
     temp_dir.mkdir(exist_ok=True)
 
-    for split_name, pair_list in splits_map.items():
-        if not pair_list:
-            continue
-        for img_path, lbl_path in pair_list:
-            temp_img = temp_dir / f"{split_name}_{img_path.name}"
-            temp_lbl = temp_dir / f"{split_name}_{lbl_path.name}"
-            shutil.move(str(img_path), str(temp_img))
-            shutil.move(str(lbl_path), str(temp_lbl))
+    for split_name, items in splits_map.items():
+        for img_path, ann_path, _ in items:
+            shutil.move(str(img_path), str(temp_dir / f"{split_name}_{img_path.name}"))
+            shutil.move(str(ann_path), str(temp_dir / f"{split_name}_{ann_path.name}"))
 
     for split in ("train", "val", "test"):
         (root / "images" / split).mkdir(parents=True, exist_ok=True)
         (root / "labels" / split).mkdir(parents=True, exist_ok=True)
+        if has_masks:
+            (root / "masks" / split).mkdir(parents=True, exist_ok=True)
 
-    for split_name, pair_list in splits_map.items():
-        if not pair_list:
-            continue
+    for split_name, items in splits_map.items():
         target_img_dir = root / "images" / split_name
-        target_lbl_dir = root / "labels" / split_name
-        for img_path, lbl_path in pair_list:
-            temp_img = temp_dir / f"{split_name}_{img_path.name}"
-            temp_lbl = temp_dir / f"{split_name}_{lbl_path.name}"
-            shutil.move(str(temp_img), str(target_img_dir / img_path.name))
-            shutil.move(str(temp_lbl), str(target_lbl_dir / lbl_path.name))
+        for img_path, ann_path, ann_kind in items:
+            ann_subdir = "masks" if ann_kind == "masks" else "labels"
+            target_ann_dir = root / ann_subdir / split_name
+            shutil.move(
+                str(temp_dir / f"{split_name}_{img_path.name}"),
+                str(target_img_dir / img_path.name),
+            )
+            shutil.move(
+                str(temp_dir / f"{split_name}_{ann_path.name}"),
+                str(target_ann_dir / ann_path.name),
+            )
 
     # Cleanup empty source dirs
     for split in ("train", "val", "test"):
-        for subdir in ("images", "labels"):
+        for subdir in ("images", "labels", "masks"):
             d = root / subdir / split
             if d.exists() and not any(d.iterdir()):
                 try:
                     d.rmdir()
                 except OSError:
                     pass
-
     if temp_dir.exists() and not any(temp_dir.iterdir()):
         try:
             temp_dir.rmdir()
         except OSError:
             pass
 
-    # 5. Write data.yaml
+    # 5. Write yaml back IN PLACE (avoids duplicate yaml files in registry)
     names = yaml_data.get("names", {})
     nc = yaml_data.get("nc", len(names) if isinstance(names, dict) else 0)
 
@@ -374,8 +408,11 @@ def resplit_dataset(
         "nc": nc,
         "names": names,
     }
+    if has_masks:
+        yaml_content["masks_dir"] = "masks"
 
-    with open(root / "data.yaml", "w") as f:
+    target_yaml = data_yaml if data_yaml is not None else (root / "data.yaml")
+    with open(target_yaml, "w") as f:
         yaml.dump(yaml_content, f, default_flow_style=False, sort_keys=False)
 
     # 6. Re-detect and return new structure
