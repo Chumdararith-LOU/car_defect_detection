@@ -24,6 +24,13 @@ def init_review_db() -> None:
     from services.review_db import review_db  # noqa: F401
 
 
+@app.on_event("startup")
+def init_platform_tables() -> None:
+    from services.platform_db import init_platform_tables as _init
+
+    _init()
+
+
 origins = [
     "http://localhost:8080",
     "http://localhost:5173",
