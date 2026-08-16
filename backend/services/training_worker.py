@@ -48,6 +48,20 @@ def _build_merged_config(job: TrainingJob) -> Path:
     """Load base config, apply overrides, inject job metadata, and save snapshot."""
     merged_config = {}
 
+    # Mac safety guard: auto-limit epochs on MPS unless explicitly overridden
+    import torch
+
+    is_mac = torch.backends.mps.is_available()
+    user_specified_epochs = job.overrides and "epochs" in job.overrides
+
+    if is_mac and not user_specified_epochs:
+        logger.warning(
+            "Mac detected (MPS available). Auto-limiting epochs to 1 for safety. "
+            "To override, explicitly set 'epochs' in overrides."
+        )
+        if "epochs" not in merged_config:
+            merged_config["epochs"] = 1
+
     if job.config_path:
         base_path = PROJECT_ROOT / job.config_path
         if base_path.exists():

@@ -1,0 +1,38 @@
+task: segment
+
+differential_lr: false
+
+model_preset: yolo26m-seg.pt
+
+project_name: stage3_panel_segmenter_baseline
+run_name: stage3_panel_segmenter_baseline
+
+multi_scale: false
+
+dataset_config: "data/processed/stage3/car_damages_panel/car_damages_panel.yaml"
+
+epochs: 100
+imgsz: 640
+batch_size: 8
+patience: 20
+device: 0
+workers: 8
+amp: true
+freeze: 0
+
+lr0: 0.001
+lrf: 0.01
+optimizer: AdamW
+
+augmentations:
+  hsv_h: 0.015
+  hsv_s: 0.4
+  hsv_v: 0.4
+  degrees: 10.0
+  scale: 0.3
+  perspective: 0.0005
+  fliplr: 0.5
+  mosaic: 0.0
+  mixup: 0.0
+  erasing: 0.0
+  close_mosaic: 0
