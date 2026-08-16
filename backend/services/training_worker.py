@@ -157,25 +157,28 @@ class TrainingWorker:
                 process.wait()
 
             if process.returncode == 0:
+                logger.info(f"Job {job.id} completed successfully")
                 training_db.update_job_status(
                     job.id,
                     JobStatus.COMPLETED,
                     completed_at=datetime.utcnow().isoformat(),
                 )
             else:
+                error_msg = f"Process exited with code {process.returncode}"
+                logger.error(f"Job {job.id} failed: {error_msg}")
                 training_db.update_job_status(
                     job.id,
                     JobStatus.FAILED,
-                    error_message=f"Process exited with code {process.returncode}",
+                    error_message=error_msg,
                     completed_at=datetime.utcnow().isoformat(),
                 )
 
         except Exception as e:
-            logger.exception(f"Job {job.id} failed")
+            logger.exception(f"Job {job.id} failed with exception")
             training_db.update_job_status(
                 job.id,
                 JobStatus.FAILED,
-                error_message=str(e),
+                error_message=f"Exception: {str(e)}",
                 completed_at=datetime.utcnow().isoformat(),
             )
         finally:
