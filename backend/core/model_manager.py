@@ -1,7 +1,7 @@
 import logging
 import os
 from ultralytics import YOLO
-from config import STAGE1_DIR, STAGE2_DIR, STAGE3_DIR
+from core.config import settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ModelManager")
@@ -12,13 +12,9 @@ class ModelManager:
         self.loaded_models = {}
 
     def _get_stage_dir(self, stage: str) -> str:
-        if stage == "stage1":
-            return STAGE1_DIR
-        if stage == "stage2":
-            return STAGE2_DIR
-        if stage == "stage3":
-            return STAGE3_DIR
-        raise ValueError(f"Unknown stage: {stage}")
+        if stage not in ("stage1", "stage2", "stage3"):
+            raise ValueError(f"Unknown stage: {stage}")
+        return str(settings.workspace_root / "backend" / "models" / stage)
 
     def get_model(self, model_name: str = None, stage: str = "stage1"):
         stage_dir = self._get_stage_dir(stage)

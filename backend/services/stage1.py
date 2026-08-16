@@ -2,7 +2,7 @@ import logging
 import time
 import numpy as np
 
-from config import TAU_PIXEL, TAU_ANOMALY
+from core.config import settings
 
 logger = logging.getLogger("Stage1")
 
@@ -31,12 +31,16 @@ def run_prescreen(img_np: np.ndarray, model, device: str = "cpu") -> dict:
     h, w = saliency_map.shape
     total_pixels = h * w
 
-    binary_mask = (saliency_map >= TAU_PIXEL).astype(np.uint8)
+    binary_mask = (saliency_map >= settings.tau_pixel).astype(np.uint8)
     active_pixels = int(np.sum(binary_mask))
     saliency_score = active_pixels / total_pixels if total_pixels > 0 else 0.0
-    is_active = saliency_score >= TAU_ANOMALY
+    is_active = saliency_score >= settings.tau_anomaly
 
-    logger.info("Stage 1 SOD | tau_pixel=%s | tau_anomaly=%s", TAU_PIXEL, TAU_ANOMALY)
+    logger.info(
+        "Stage 1 SOD | tau_pixel=%s | tau_anomaly=%s",
+        settings.tau_pixel,
+        settings.tau_anomaly,
+    )
     logger.info(
         "  Saliency Score: %.6f (%d/%d active pixels)",
         saliency_score,
