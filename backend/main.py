@@ -13,6 +13,7 @@ from api.system import router as system_router
 from api.training import router as training_router
 from core.config import settings
 from api.dataset_prep import router as dataset_prep_router
+from api.experiments import router as experiments_router
 
 app = FastAPI(title=settings.app_name)
 
@@ -48,3 +49,4 @@ app.include_router(dataset_images_router)
 app.include_router(dataset_import_router)
 app.include_router(training_router)
 app.include_router(dataset_prep_router)
+app.include_router(experiments_router)
