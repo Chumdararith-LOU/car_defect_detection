@@ -2,7 +2,7 @@ import platform
 import socket
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import psutil
 
@@ -20,6 +20,8 @@ from schemas.host import (
     Recommendations,
     RemoteInfo,
 )
+from schemas.model_registry import ModelStatus, StageType
+from services.model_registry_db import model_registry_db
 
 GB = 1024**3
 MIN_TRAINING_VRAM_GB = 12.0
@@ -149,15 +151,48 @@ def _detect_gpu() -> GpuInfo:
     return GpuInfo(cuda_available=False, mps_available=False)
 
 
+def _resolve_stage_weights(workspace_root: Path, stage: str) -> Optional[Path]:
+    deployed_link = workspace_root / "backend" / "models" / stage / "deployed.pt"
+    if deployed_link.is_file():
+        return deployed_link
+
+    try:
+        deployed_rows = model_registry_db.list_models(
+            stage=StageType(stage), status=ModelStatus.DEPLOYED
+        )
+    except Exception:
+        deployed_rows = []
+    for row in deployed_rows:
+        candidate = Path(row.weights_path)
+        if not candidate.is_absolute():
+            candidate = workspace_root / candidate
+        if candidate.is_file():
+            return candidate
+
+    fallback = CHAMPION_WEIGHT_PATHS.get(stage)
+    if fallback is not None and (workspace_root / fallback).is_file():
+        return workspace_root / fallback
+
+    return None
+
+
 def _detect_models(workspace_root: Path) -> Dict[str, ModelAvailability]:
     models: Dict[str, ModelAvailability] = {}
     for stage, rel_path in CHAMPION_WEIGHT_PATHS.items():
-        found = (workspace_root / rel_path).is_file()
+        resolved = _resolve_stage_weights(workspace_root, stage)
+        found = resolved is not None
+        if found:
+            try:
+                display_path = str(resolved.relative_to(workspace_root))
+            except ValueError:
+                display_path = str(resolved)
+        else:
+            display_path = str(rel_path)
         models[stage] = ModelAvailability(
             available=found,
             version=MODEL_VERSIONS[stage],
             path_status="found" if found else "missing",
-            path=str(rel_path),
+            path=display_path,
         )
     stage4_found = (workspace_root / STAGE4_CONFIG_PATH).is_file()
     models["stage4"] = ModelAvailability(
