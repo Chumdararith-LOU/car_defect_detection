@@ -82,3 +82,9 @@ class RollbackResponse(BaseModel):
 class ModelListResponse(BaseModel):
     models: List[ModelVersion]
     total: int
+
+
+class GatePreviewResponse(BaseModel):
+    model_id: str
+    gate_results: List[GateResult]
+    all_passed: bool

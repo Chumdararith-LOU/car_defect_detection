@@ -12,7 +12,7 @@ import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import Dict
-
+from services.candidate_collector import register_candidate_from_job
 from core.config import settings
 from schemas.training import JobStatus, LaunchRequest, StageType, TrainingJob
 from services.training_db import training_db
@@ -163,6 +163,10 @@ class TrainingWorker:
                     JobStatus.COMPLETED,
                     completed_at=datetime.utcnow().isoformat(),
                 )
+                try:
+                    register_candidate_from_job(job)
+                except Exception:
+                    logger.exception(f"Job {job.id}: candidate registration failed")
             else:
                 error_msg = f"Process exited with code {process.returncode}"
                 logger.error(f"Job {job.id} failed: {error_msg}")

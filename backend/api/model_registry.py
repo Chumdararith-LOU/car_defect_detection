@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from schemas.model_registry import (
     DeploymentResponse,
+    GatePreviewResponse,
     ModelListResponse,
     ModelStatus,
     ModelVersion,
@@ -12,6 +13,7 @@ from schemas.model_registry import (
     RollbackResponse,
     StageType,
 )
+from services.evaluation_gates import all_gates_passed, evaluate_gates
 from services.model_registry_service import (
     deploy_model,
     promote_model,
@@ -46,6 +48,21 @@ def get_model_detail(model_id: str) -> ModelVersion:
 def register_candidate(request: RegisterRequest) -> ModelVersion:
     """Register a new candidate model in the registry."""
     return register_model(request)
+
+
+@router.post("/{model_id}/evaluate", response_model=GatePreviewResponse)
+def evaluate_gates_preview(model_id: str) -> GatePreviewResponse:
+    """Preview evaluation gates without promoting (for human approval UI)."""
+    candidate = model_registry_db.get_by_id(model_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+    champion = model_registry_db.get_champion(candidate.stage)
+    gate_results = evaluate_gates(candidate, champion)
+    return GatePreviewResponse(
+        model_id=model_id,
+        gate_results=gate_results,
+        all_passed=all_gates_passed(gate_results),
+    )
 
 
 @router.post("/{model_id}/promote", response_model=PromotionResponse)
