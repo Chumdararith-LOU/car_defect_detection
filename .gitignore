@@ -14,7 +14,6 @@ venv/
 
 # -----------------------------------------------------------------
 # MLOps Data & Artifact Storage (Content-level ignore only)
-# -----------------------------------------------------------------
 data/raw/*
 data/processed/*
 data/calibration/*
@@ -84,3 +83,11 @@ archive/pre_standardization/notebooks/Diagnost/
 
 # Local review database — never commit
 backend/data/*.db
+
+# --- Phase 8-12 Runtime Data ---
+backend/data/inspections/
+backend/data/logs/
+backend/data/configs/training/
+
+# Deployment symlinks — recreated by model registry on deploy
+backend/models/*/deployed.pt

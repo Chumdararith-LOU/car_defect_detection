@@ -2,146 +2,210 @@
 
 ## Overview
 
-Multi-stage AI pipeline for automotive exterior defect detection and industrial quality inspection. Stage 1 is a binary/semantic pre-screening model (SOD), Stage 2 is a 7-class defect instance segmentation model (completed), Stage 3 is a panel/component segmentation model (M_panel, 21 classes, currently in progress), and Stage 4 maps detected defects to vehicle panels using Intersection-over-Defect (IoD) and computes Damage Severity Index (DSI). Development happens on macOS; training runs on an Ubuntu server (RTX 4090) at `/home/lamacpp/Documents/car_defect_detection`.
+Multi-stage AI pipeline for automotive exterior defect detection and industrial quality inspection. Stage 1 is a binary/semantic pre-screening model (SOD) using Focal Loss and overlapping tiling. Stage 2 is a 7-class defect instance segmentation model (completed) using Resume-and-Adapt transfer and SAHI at 1024px. Stage 3 is a 21-class panel/component segmentation model (M_panel, currently in progress). Stage 4 fuses Stage 2 defects with Stage 3 panels using Intersection-over-Defect (IoD) and computes Damage Severity Index (DSI) for panel-aware diagnostics. Development happens on macOS; training runs on an Ubuntu server (RTX 4090) at `/home/lamacpp/Documents/car_defect_detection`. A FastAPI backend provides orchestration, inspection, dataset management, and training APIs.
 
 ## Tech Stack & Dependencies
 
-**Core (requirements.txt):** ultralytics (YOLO), torch >= 2.4, torchvision, opencv-python-headless, mlflow, dvc[s3], onnx, onnxruntime, pyyaml, python-dotenv, numpy, pandas, matplotlib, seaborn, tqdm.
+**Core (requirements.txt):** ultralytics (YOLO), torch >= 2.4, torchvision, opencv-python-headless, mlflow, dvc[s3], onnx, onnxruntime, sahi, shapely, pyyaml, python-dotenv, numpy, pandas, matplotlib, seaborn, tqdm, fastapi, uvicorn[standard], pydantic, pydantic-settings, psutil, python-multipart.
 
 **Dev (requirements-dev.txt):** pytest, pytest-cov, pre-commit, yamllint, black, flake8, isort, mypy, mkdocs + mkdocs-material, jupyter.
 
-**Implicit/undeclared deps used in code:** shapely (stage4 spatial mapper), sahi/sam2 (run_sam2_full_dataset.py), PIL.
+**Infra:** Python 3.10 (Dockerfile/CI), Docker Compose (MLflow server on :5001 + MinIO S3 on :9000/:9001), DVC for data versioning, MLflow for experiment tracking, GitHub Actions CI (flake8 + pytest), pre-commit hooks (black, flake8, isort, yamllint, DVC status).
 
-**Infra:** Python 3.10 (Dockerfile/CI), Docker Compose (MLflow server + MinIO S3), DVC for data versioning, MLflow for experiment tracking, GitHub Actions CI (flake8 + pytest), pre-commit hooks (black, flake8, isort, yaml lint, DVC status).
+**Environment variables (.env / .env.example):** MLFLOW_URI, MLFLOW_TRACKING_URI, PROJECT_NAME, RUN_NAME, CONFIG_PATH, MINIO_ROOT_USER, MINIO_ROOT_PASSWORD, WORKSPACE_PATH, BACKEND_PORT.
 
-**Note:** `sam2` and `shapely` are imported in scripts but absent from requirements.txt.
+**Note:** `sam2` is imported in `run_sam2_full_dataset.py` but only commented in requirements-dev.txt (typically installed from GitHub source).
 
 ## Directory Tree
 
 ```
 .
-├── AGENTS.md                          # agent workflow rules
-├── Dockerfile
-├── Makefile                           # main task runner (setup, train, eval, stage3)
-├── Proposal.md
-├── README.md                          # empty
-├── dvc.yaml / dvc.lock                # DVC pipeline stages (stage1 only)
-├── opencode.json
-├── requirements.txt / requirements-dev.txt
-├── run_full_benchmark_matrix.sh
-├── run_sam2_full_dataset.py
-├── run_server_matrix.sh
-├── run_test_evaluation.sh
-├── yolo11n-seg.pt                     # weights at repo root (gitignored)
-├── .github/workflows/ci.yml
-├── .pre-commit-config.yaml
-├── artifacts/
+├── AGENTS.md                          # agent workflow rules (mandatory for AI assistants)
+├── Dockerfile                         # Python 3.10 container for MLflow server
+├── Makefile                           # main task runner (setup, train, eval, stage3 targets)
+├── Proposal.md                        # project proposal document
+├── README.md                          # project overview and architecture docs
+├── WORKSPACE_REPORT.md                # this file
+├── dvc.yaml / dvc.lock               # DVC pipeline stages (stage1 data prep, tiling, pseudo-labels)
+├── opencode.json                      # opencode agent configuration
+├── requirements.txt                   # core + backend dependencies
+├── requirements-dev.txt               # dev/testing/linting dependencies
+├── docker-compose.yml                 # MLflow tracker + MinIO services
+├── mlflow.db                          # MLflow SQLite backend store
+├── skills-lock.json                   # agent skills lock file
+├── yolo11n-seg.pt                     # pretrained weights (gitignored)
+├── yolo26m-seg.pt                     # pretrained weights for Stage 3 (gitignored)
+├── run_full_benchmark_matrix.sh       # benchmark matrix runner
+├── run_sam2_full_dataset.py           # SAM2 baseline comparison script
+├── run_server_matrix.sh               # server-side benchmark runner
+├── run_test_evaluation.sh             # test set evaluation runner
+├── .github/workflows/ci.yml           # GitHub Actions: flake8 + pytest
+├── .pre-commit-config.yaml            # pre-commit hook config
+├── .env / .env.example                # environment config (gitignored)
+├── artifacts/                         # exported model artifacts (onnx, tensorrt, ncnn)
 │   ├── models/{rt-detr, yolo26s-seg}/
 │   ├── ncnn/{benchmarks, bin, param}/
 │   ├── onnx/{fp16, fp32, int8}/
 │   └── tensorrt/{benchmarks, engine}/
-├── configs/
-│   ├── data/stage1/{Experiment_v1.yaml, val_splits.yaml}
-│   ├── data/stage2/{stage2_combined, stage2_custom_only, stage2_prof_only}.yaml
-│   ├── inference/sahi_production.yaml
-│   ├── quant/export_config.yaml
-│   ├── train/stage1/stage1-sod.yaml
-│   ├── train/stage2/ (9 experiment configs)
-│   ├── train/stage3/{panel_segmenter_baseline, panel_segmenter_baseline_nano, panel_segmenter_local_smoke}.yaml
-│   ├── matrix_test.yaml
-│   └── pipeline_config.yaml
-├── data/
-│   ├── raw/                           # CarDD_release, Roboflow, archives (read-only, DVC-tracked)
-│   ├── processed/                     # sod, sod_tiled, stage2, stage3, yolo_seg_clean_2200_7cls, ...
-│   ├── calibration/
-│   ├── results/stage3/test_predictions/
-│   └── raw.dvc / calibration.dvc
-├── docs/                              # Jupyter Book config + stage3 server runbook
-├── notebooks/report_experiment_inventory.ipynb
-├── reports/                           # CSVs, stage2 results, stage4 batch outputs, templates
-├── runs/                              # ultralytics training outputs (gitignored)
-├── mlruns/ + mlflow.db                # MLflow tracking store
-├── src/
-│   ├── Diagnost/                      # EDA/inspection notebooks + PDFs
-│   ├── stage1/{data, deploy, diagnostics, eval, inference, tests, train, utils}/
-│   ├── stage2/{Resume-and-Adapt, annotation, data, eval, inference, train}/
-│   ├── stage3/{data, eval, inference, train}/
-│   └── stage4/
-├── tests/{__init__.py, smoke_test_focal.py, test_data.py}
-└── yolo_import/{obj.data, obj.names?, obj_train_data/, train.txt}
+├── backend/                           # FastAPI application (Phase 5 orchestration)
+│   ├── main.py                        # FastAPI app entry point
+│   ├── config.py                      # legacy config (superseded by core/config.py)
+│   ├── api/                           # route handlers (13 routers)
+│   ├── core/                          # settings, model manager, system metrics
+│   ├── schemas/                       # Pydantic request/response models
+│   ├── services/                      # business logic (stages 1-4, training, datasets)
+│   ├── configs/                       # runtime config templates
+│   ├── models/                        # model weight storage
+│   └── data/                          # runtime data (inspections, logs, configs, DBs)
+├── configs/                           # training/inference/pipeline YAML configs
+│   ├── data/stage1/                   # stage1 dataset configs
+│   ├── data/stage2/                   # stage2 dataset configs
+│   ├── inference/sahi_production.yaml # SAHI inference config
+│   ├── matrix_test.yaml               # benchmark matrix definition
+│   ├── pipeline_config.yaml           # global pipeline parameters
+│   ├── quant/export_config.yaml       # model export/quantization config
+│   └── train/stage{1,2,3}/            # training configs per stage
+├── data/                              # all datasets (gitignored, DVC-tracked)
+│   ├── raw/                           # original datasets (read-only)
+│   ├── processed/                     # generated/converted datasets
+│   ├── calibration/                   # calibration images
+│   └── results/                       # inference results
+├── docs/                              # project documentation
+│   ├── architecture.md
+│   ├── champion_manifest.md
+│   ├── champion_manifest_verified.md
+│   ├── host_detection_spec.md
+│   ├── master_plan.md
+│   └── workspace_cleanup_plan.md
+├── notebooks/                         # analysis notebooks
+│   └── report_experiment_inventory.ipynb
+├── reports/                           # evaluation reports and benchmarks
+│   ├── stage2/                        # stage2 results CSVs
+│   ├── stage4_batch/                  # stage4 batch mapping JSON reports
+│   ├── stage4_mapping/                # stage4 single-image mapping reports
+│   └── templates/                     # Jinja2 report template
+├── runs/                              # YOLO training runs (gitignored)
+│   └── segment/                       # segmentation training outputs
+├── src/                               # source code by stage
+│   ├── stage1/                        # binary SOD pre-screener
+│   │   ├── data/                      # dataset preparation scripts
+│   │   ├── deploy/                    # model export
+│   │   ├── diagnostics/               # failure analysis, heatmaps, stitching
+│   │   ├── eval/                      # evaluation and benchmarking
+│   │   ├── inference/                 # inference router, test-set inference
+│   │   ├── tests/                     # stage1-specific test harnesses
+│   │   ├── train/                     # training scripts (focal loss, SOD)
+│   │   └── utils/                     # config helpers
+│   ├── stage2/                        # 7-class defect segmentation
+│   │   ├── Resume-and-Adapt/          # transfer learning scripts
+│   │   ├── annotation/                # CVAT annotation prep
+│   │   ├── eval/                      # benchmark/diagnostic notebooks
+│   │   ├── inference/                 # SAHI inference
+│   │   └── train/                     # training script
+│   ├── stage3/                        # 21-class panel segmentation
+│   │   ├── data/                      # dataset conversion (COCO→YOLO, YAML resolution)
+│   │   ├── eval/                      # visual validation notebook
+│   │   └── train/                     # custom trainer with MLflow integration
+│   └── stage4/                        # spatial fusion (IoD mapping)
+│       ├── spatial_context_mapper.py  # core IoD/DSI mapper
+│       └── batch_mapping_test.py      # batch test harness
+├── tests/                             # pytest test suite
+│   ├── test_data.py                   # dataset validation tests
+│   └── smoke_test_focal.py            # focal loss smoke test
+└── archive/                           # superseded pre-standardization materials
+    ├── INVENTORY.md
+    └── pre_standardization/
+        ├── configs/stage2/            # old stage2 training configs
+        ├── legacy_import/             # legacy YOLO import files
+        ├── mlruns_legacy/             # old MLflow run artifacts
+        └── notebooks/                 # diagnostic/EDA notebooks
 ```
 
 ## Folder-by-Folder Breakdown
 
 | Folder | Purpose |
-|---|---|
-| `src/stage1/` | Stage 1 binary/semantic pre-screening: SOD data prep, tiling, training (focal loss), benchmarking, export (ONNX/TensorRT), inference router |
-| `src/stage2/` | Stage 2 defect segmentation: Resume-and-Adapt transfer learning scripts, CVAT annotation prep, SAHI inference, training |
-| `src/stage3/` | Stage 3 panel segmentation: raw-to-YOLO converter, dataset YAML resolver, custom trainer with MLflow |
-| `src/stage4/` | Panel-defect spatial mapping: IoD-based assignment, DSI calculation, batch stress-test harness |
-| `src/Diagnost/` | Exploratory notebooks: dataset inspection, polygon checks, EDA (mostly gitignored) |
-| `configs/train/stage1-3/` | Per-experiment YAML configs (model preset, hyperparams, augmentations) |
-| `configs/data/` | Dataset split YAML for each stage |
-| `configs/inference/` | SAHI production inference config |
-| `configs/quant/` | ONNX/TensorRT export + quantization config |
-| `artifacts/` | Exported models (ONNX fp16/fp32/int8, TensorRT engines, NCNN) |
-| `data/raw/` | Read-only source datasets (DVC-tracked) |
-| `data/processed/` | Generated training datasets per stage (gitignored) |
-| `reports/` | Experiment results CSVs, stage4 JSON reports + overlay PNGs |
-| `docs/` | Jupyter Book scaffolding + server runbooks for Stage 3 |
-| `tests/` | Dataset schema validation tests (env-var driven) |
-| `yolo_import/` | Legacy Darknet-format import stub (obj.data, train.txt) |
-| `notebooks/` | Experiment inventory reporting |
-| `mlruns/`, `mlflow.db`, `minio_data/` | Local experiment tracking / artifact storage |
+|--------|---------|
+| `backend/api/` | FastAPI route handlers: health, host detection, inspection, datasets, dataset images/import/prep, models, reviews, system metrics, training, experiments |
+| `backend/core/` | App settings (pydantic-settings), model weight manager, system metrics (psutil) |
+| `backend/schemas/` | Pydantic v2 request/response models for all API endpoints |
+| `backend/services/` | Business logic: stage1-4 inference orchestration, dataset building/tiling/import/registry, training worker (background subprocess), inspection store, review DB, host detection, experiment service |
+| `backend/data/` | Runtime artifacts: inspection payloads (images + JSON), training logs, training config snapshots, SQLite DBs (reviews.db, training_jobs.db) |
+| `configs/` | All YAML configs: dataset definitions, training hyperparameters, inference params, pipeline globals, export/quantization settings |
+| `data/raw/` | Read-only original datasets: CarDD_release, Car defect 2000/2200, Roboflow, archive |
+| `data/processed/` | Generated datasets: SOD, tiled variants, stage2 YOLO, stage3 car_damages_panel, calibration |
+| `src/stage1/` | Binary SOD pre-screener: data prep, focal-loss training, evaluation, diagnostics (Grad-CAM, heatmaps), ONNX export, inference router |
+| `src/stage2/` | 7-class defect segmentation: Resume-and-Adapt transfer scripts, SAHI inference, CVAT annotation prep, training |
+| `src/stage3/` | 21-class panel segmenter: COCO→YOLO conversion, dataset YAML resolution, custom trainer with MLflow logging |
+| `src/stage4/` | Spatial fusion: IoD-based defect→panel mapper, DSI computation, batch testing |
+| `tests/` | Pytest suite: dataset schema validation, focal loss smoke test |
+| `reports/` | Evaluation outputs: benchmark CSVs, stage4 mapping JSON reports, Jinja2 report template |
+| `docs/` | Architecture, champion manifests, master plan, cleanup plan |
+| `notebooks/` | Experiment inventory analysis |
+| `artifacts/` | Exported model formats: ONNX (fp16/fp32/int8), TensorRT engines, NCNN |
+| `runs/` | YOLO training run outputs (weights, logs, results) |
+| `archive/` | Superseded configs, legacy MLflow runs, diagnostic notebooks from pre-standardization era |
+| `.agents/skills/` | Agent skill definitions: debugging-wizard, fastapi-expert, fine-tuning-expert, ml-pipeline, test-master |
+| `.opencode/` | OpenCode agent configuration and project rules |
 
 ## Key Files & Entry Points
 
-| File | Description |
-|---|---|
-| `Makefile` | Primary orchestrator: `setup`, `train`, `eval`, `export`, `start-mlflow`, and full Stage 3 workflow (`stage3-local-smoke`, `stage3-server-one-shot`) |
-| `src/stage1/train/train.py` | Stage 1 generic trainer |
-| `src/stage1/train/train_sod.py` | Stage 1 SOD semantic segmentation trainer |
-| `src/stage2/train/train.py` | Stage 2 defect segmentation trainer |
-| `src/stage2/Resume-and-Adapt/stage1_head_warmup.py` | Head-only warmup transfer (Stage 2 champion strategy) |
-| `src/stage2/inference/sahi_inference.py` | SAHI sliced inference module (reused by stage4) |
-| `src/stage3/train/train.py` | Stage 3 panel segmenter trainer (custom SegmentationTrainer, focal loss option, MLflow) |
-| `src/stage3/data/convert_car_damages_to_yolo.py` | Converts Car damages dataset to Stage 3 YOLO panel format (seed 42 split) |
-| `src/stage3/data/resolve_dataset_yaml.py` | Rewrites dataset YAML paths for server portability |
-| `src/stage4/spatial_context_mapper.py` | Maps defects to panels via IoD (theta=0.50), computes DSI, emits JSON factory report |
-| `src/stage4/batch_mapping_test.py` | Batch stress-test harness for the spatial mapper |
-| `configs/train/stage3/panel_segmenter_baseline.yaml` | Stage 3 baseline config (yolo26m-seg, 100 epochs, AdamW, mild aug) |
-| `run_sam2_full_dataset.py` | SAM2-based annotation refinement for CVAT dataset |
-| `run_test_evaluation.sh` / `run_server_matrix.sh` / `run_full_benchmark_matrix.sh` | Stage 1 model evaluation shells |
-| `dvc.yaml` | DVC pipeline: prep_sod_data → tile_data → train → evaluate (stage1) |
-| `tests/test_data.py` | Pytest dataset structure validator (requires `DATA_YAML` env var) |
+| File | Role |
+|------|------|
+| `backend/main.py` | FastAPI app entry point; mounts 12 routers, CORS middleware |
+| `backend/core/config.py` | Pydantic Settings for backend configuration |
+| `backend/core/model_manager.py` | Model weight loading and lifecycle management |
+| `backend/services/training_worker.py` | Background training subprocess with config snapshotting |
+| `backend/services/stage1.py` – `stage4.py` | Per-stage inference orchestration services |
+| `backend/services/experiment_service.py` | Experiment tracking service (new, untracked) |
+| `src/stage1/train/train.py` | Stage 1 SOD training entry |
+| `src/stage1/train/train_stage1_focal_full.py` | Focal loss full training variant |
+| `src/stage2/train/train.py` | Stage 2 defect segmentation training |
+| `src/stage2/Resume-and-Adapt/stage1_head_warmup.py` | Head-only warmup transfer (champion approach) |
+| `src/stage2/inference/sahi_inference.py` | SAHI tiled inference for stage 2 |
+| `src/stage3/train/train.py` | Stage 3 custom trainer (imports stage1.utils.config_helpers) |
+| `src/stage3/data/convert_car_damages_to_yolo.py` | COCO→YOLO panel dataset converter |
+| `src/stage3/data/resolve_dataset_yaml.py` | Dataset YAML path resolution (local vs server) |
+| `src/stage4/spatial_context_mapper.py` | IoD/DSI spatial mapper (core stage 4 logic) |
+| `src/stage4/batch_mapping_test.py` | Batch evaluation harness for stage 4 |
+| `Makefile` | Task runner: setup, data-consolidate, train targets, stage3-preflight/train |
+| `dvc.yaml` | DVC pipeline: prep_sod_data, tile_data, pseudo-labels, validation |
+| `run_sam2_full_dataset.py` | SAM2 baseline comparison (requires sam2 from GitHub) |
+| `configs/train/stage3/panel_segmenter_baseline.yaml` | Stage 3 baseline training config |
+| `configs/pipeline_config.yaml` | Global pipeline parameters and gating thresholds |
+| `tests/test_data.py` | Dataset schema validation tests |
+| `.github/workflows/ci.yml` | CI: flake8 lint + pytest tests/ |
 
 ## Observations for Refactoring
 
-### Secrets & Environment
-- `.env` exists (gitignored) but `.env.example` is **empty** — no documented env vars.
-- `docker-compose.yml` contains a **hardcoded MinIO root password** (`secure_vault_password_2026`). Should move to `.env` / secrets manager.
-- `run_sam2_full_dataset.py:20` has a **hardcoded MacBook absolute path** to a SAM2 checkpoint.
+### Code Smells & Structural Issues
 
-### Structure / Duplication
-- `Makefile` references `src/data/consolidate.py`, `src/train/train.py`, `src/eval/validate.py`, `src/deploy/export.py` — these paths no longer exist (code moved to `src/stage1/...`). Legacy targets (`train`, `eval`, `export`, `data-consolidate`, `train-sod`) are stale.
-- `dvc.yaml` references `src/data/prep_sod.py` and `src/data/create_tiles.py` — actually at `src/stage1/data/`. DVC pipeline is broken.
-- `configs/train/stage2/` has 9 configs; several appear superseded (e.g., non-7cls variants of model4/model5). Candidates for archival.
-- `src/Diagnost/` has duplicate notebooks (`analyze_train_dataset.ipynb` vs `analyze_train_dataset (1).ipynb`, same for `study_stage2_tiled_dataset`).
-- `yolo_seg_clean_2200_` (trailing underscore) alongside `yolo_seg_clean_2200_7cls` in data/processed looks like a leftover/partial directory.
-- `yolo_import/` appears to be an unused Darknet-format stub.
-- `reports/stage2/` contains directories with **trailing spaces** in names (`yolo26m_1024_stage2_baseline `), which is fragile for shell tooling.
+1. **Cross-stage coupling:** `src/stage3/train/train.py` imports `from stage1.utils.config_helpers import resolve_device` — coupling between stages. Consider extracting to `src/common/`.
+2. **Duplicate config files:** `backend/config.py` (legacy) coexists with `backend/core/config.py` (pydantic-settings). The legacy one appears unused.
+3. **Stale DVC/Makefile paths:** `dvc.yaml` references `src/data/prep_sod.py` and `src/data/create_tiles.py` but actual scripts are under `src/stage1/data/`. Makefile `data-consolidate` target references `src/data/consolidate.py` (non-existent).
+4. **Untracked new backend files:** `backend/api/experiments.py`, `backend/schemas/experiments.py`, `backend/services/experiment_service.py`, `backend/data/configs/training/058fd366-*.yaml` are untracked in git.
+5. **`src/stage3/inference/` is missing** — no inference script for panel model yet (noted in AGENTS.md as future work).
+6. **Archive bloat:** `archive/pre_standardization/` contains ~40 notebooks, legacy configs, and MLflow artifacts that add noise.
+7. **Report directories with trailing spaces:** `reports/stage2/yolo26m_1024_stage2_baseline ` and `yolo26m_1024_stage2_clean_multiscale_v2 ` have trailing spaces in directory names.
+8. **backend/data/ not fully gitignored:** Only `*.db` files are excluded; inspection images, logs, and config snapshots may accumulate.
 
-### Missing / Inconsistent
-- `shapely` and `sam2` imported in code but not in `requirements.txt`.
-- CI runs `pytest src/tests/` but tests live at `./tests/` — CI test step likely fails or tests nothing.
-- `README.md` is empty.
-- `src/stage3/inference/` is an empty directory.
-- `src/stage1/utils/config_helpers.py` is imported cross-stage by `src/stage3/train/train.py` (`from stage1.utils.config_helpers import resolve_device`) — coupling between stages; consider a shared `src/common/` module.
+### Dependency Notes
+
+- `shapely` and `sahi` are now declared in requirements.txt (previously missing).
+- `sam2` remains undeclared (comment-only in requirements-dev.txt); acceptable since it's only used in one comparison script.
+- Backend uses `pydantic-settings` for config but `python-dotenv` is also in requirements (potential overlap).
+
+### CI & Testing
+
+- CI runs `pytest tests/` (correct path).
+- Only 2 test files exist (`test_data.py`, `smoke_test_focal.py`) — minimal coverage for the backend and stage 1-4 logic.
 
 ### Suggestions
-1. Fix stale Makefile/dvc.yaml paths or add a `src/data` → `src/stage1/data` compatibility note.
-2. Move MinIO credentials to `.env`; populate `.env.example` with `MLFLOW_URI`, `DATA_YAML`, `MLFLOW_TRACKING_URI`, MinIO creds.
-3. Add `shapely` (and optionally `sam2`) to requirements.
-4. Fix CI test path (`pytest tests/`).
-5. Remove duplicate `(1)` notebooks and the trailing-space report directories.
-6. Archive superseded Stage 2 configs into `configs/train/stage2/archived/`.
+
+1. Extract shared utilities (config_helpers, device resolution) into `src/common/` to break cross-stage imports.
+2. Remove or archive `backend/config.py` if superseded by `backend/core/config.py`.
+3. Fix DVC stage paths to point to actual script locations (`src/stage1/data/`).
+4. Commit or `.gitignore` the new experiment service files.
+5. Add `backend/data/inspections/`, `backend/data/logs/`, `backend/data/configs/` to `.gitignore` if not needed in version control.
+6. Rename trailing-space report directories.
+7. Add backend API tests (health endpoint, basic schema validation) to `tests/`.
+8. Consider consolidating `Makefile` stage1 targets that reference non-existent paths.
