@@ -47,6 +47,28 @@ def find_best_weights(job: TrainingJob) -> Optional[Path]:
         if expected.exists():
             return expected
 
+    # Pattern 2: MLflow artifacts (Stage 3 custom trainer logs here)
+    # Structure: mlruns/{experiment_id}/{run_id}/artifacts/weights/best.pt
+    mlruns_dir = PROJECT_ROOT / "mlruns"
+    if mlruns_dir.exists():
+        # Find best.pt in MLflow artifacts for recent runs
+        mlflow_candidates = list(mlruns_dir.rglob("artifacts/weights/best.pt"))
+        if mlflow_candidates:
+            # Filter by run_name if possible (check parent directory name)
+            matching = [
+                p
+                for p in mlflow_candidates
+                if job.run_name in str(p) or job.project_name in str(p)
+            ]
+            if matching:
+                newest = max(matching, key=lambda p: p.stat().st_mtime)
+                logger.info(f"Found weights in MLflow artifacts: {newest}")
+                return newest
+            # Fallback to most recent
+            newest = max(mlflow_candidates, key=lambda p: p.stat().st_mtime)
+            logger.info(f"Using most recent MLflow weights: {newest}")
+            return newest
+
     # Fallback: most recently modified best.pt anywhere under runs/
     runs_dir = PROJECT_ROOT / "runs"
     if runs_dir.exists():
