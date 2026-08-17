@@ -17,6 +17,7 @@ from api.experiments import router as experiments_router
 from api.model_registry import router as model_registry_router
 from api.taxonomy import router as taxonomy_router
 from api.checkpoints import router as checkpoints_router
+from api.dataset_audit import router as dataset_audit_router
 
 app = FastAPI(title=settings.app_name)
 
@@ -67,3 +68,4 @@ app.include_router(experiments_router)
 app.include_router(model_registry_router)
 app.include_router(taxonomy_router)
 app.include_router(checkpoints_router)
+app.include_router(dataset_audit_router)
