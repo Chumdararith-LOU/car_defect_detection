@@ -58,8 +58,8 @@ class Defect(BaseModel):
     polygon: List[Tuple[float, float]] = []
     panel: str = Field(..., alias="assigned_panel", serialization_alias="panel")
     iod: float = Field(..., alias="containment_ratio_iod", serialization_alias="iod")
-    dsi: float = Field(
-        ..., alias="damage_severity_index_dsi", serialization_alias="dsi"
+    dsi: Optional[float] = Field(
+        None, alias="damage_severity_index_dsi", serialization_alias="dsi"
     )
 
 
@@ -76,3 +76,4 @@ class InspectionPayload(BaseModel):
     unclassified_anomalies: List[UnclassifiedAnomaly] = []
     suppressed_detections: List[SuppressedDetection] = []
     stage1_blobs: List[Stage1Blob] = []
+    disabled_stages: List[str] = []

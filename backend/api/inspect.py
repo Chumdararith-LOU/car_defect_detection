@@ -20,10 +20,31 @@ async def inspect_vehicle(
     stage2_preset: str = Form("balanced"),
     stage2_conf: float = Form(0.15),
     device: str = Form("auto"),
+    enable_stage1: bool = Form(True),
+    enable_stage2: bool = Form(True),
+    enable_stage3: bool = Form(True),
 ):
-    stage1_model = model_manager.get_model(model_name, stage="stage1")
+    if not (enable_stage1 or enable_stage2 or enable_stage3):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="at least one stage must be enabled",
+        )
 
-    if stage1_model is None:
+    disabled_stages = [
+        stage
+        for stage, enabled in (
+            ("stage1", enable_stage1),
+            ("stage2", enable_stage2),
+            ("stage3", enable_stage3),
+        )
+        if not enabled
+    ]
+
+    stage1_model = (
+        model_manager.get_model(model_name, stage="stage1") if enable_stage1 else None
+    )
+
+    if enable_stage1 and stage1_model is None:
         logger.warning(
             "Stage 1 Model not found or not loaded. Returning MOCK PASS payload."
         )
@@ -36,6 +57,7 @@ async def inspect_vehicle(
             "defects": [],
             "unclassified_anomalies": [],
             "suppressed_detections": [],
+            "disabled_stages": disabled_stages,
         }
 
     try:
@@ -63,6 +85,9 @@ async def inspect_vehicle(
             stage2_preset=stage2_preset,
             stage2_conf=stage2_conf,
             device=device,
+            enable_stage1=enable_stage1,
+            enable_stage2=enable_stage2,
+            enable_stage3=enable_stage3,
         )
 
         inspection_id = getattr(response_data, "inspection_id", "")

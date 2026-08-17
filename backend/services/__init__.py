@@ -34,6 +34,9 @@ def run_inspection(
     stage2_conf: float = 0.15,
     device: str = "auto",
     model=None,
+    enable_stage1: bool = True,
+    enable_stage2: bool = True,
+    enable_stage3: bool = True,
     **kwargs,
 ) -> InspectionPayload:
     stage1_model = stage1_model or model
@@ -41,34 +44,59 @@ def run_inspection(
     logger.info("Resolved compute device: %s", resolved_device)
     inspection_id = f"INSP_{datetime.now().strftime('%Y%m%d%H%M%S')}"
     timestamp = datetime.now(timezone.utc).isoformat()
+    disabled_stages = [
+        stage
+        for stage, enabled in (
+            ("stage1", enable_stage1),
+            ("stage2", enable_stage2),
+            ("stage3", enable_stage3),
+        )
+        if not enabled
+    ]
 
-    if stage1_model is None or img_np is None:
-        return _build_pass_payload(inspection_id, timestamp, 1600, 900, 0.0, 0.0)
+    if img_np is None:
+        return _build_pass_payload(
+            inspection_id, timestamp, 1600, 900, 0.0, 0.0, disabled_stages
+        )
 
     img_h, img_w = img_np.shape[:2]
 
+    if enable_stage1 and stage1_model is None:
+        return _build_pass_payload(
+            inspection_id, timestamp, img_w, img_h, 0.0, 0.0, disabled_stages
+        )
+
     # --- STAGE 1: PRE-SCREEN ---
-    s1_result = run_prescreen(img_np, stage1_model, resolved_device)
+    s1_result = None
+    if enable_stage1:
+        s1_result = run_prescreen(img_np, stage1_model, resolved_device)
 
-    if s1_result.get("error"):
-        return _build_pass_payload(
-            inspection_id, timestamp, img_w, img_h, 0.0, s1_result["latency_ms"]
-        )
+        if s1_result.get("error"):
+            return _build_pass_payload(
+                inspection_id,
+                timestamp,
+                img_w,
+                img_h,
+                0.0,
+                s1_result["latency_ms"],
+                disabled_stages,
+            )
 
-    if not s1_result["is_active"]:
-        return _build_pass_payload(
-            inspection_id,
-            timestamp,
-            img_w,
-            img_h,
-            s1_result["saliency_score"],
-            s1_result["latency_ms"],
-        )
+        if not s1_result["is_active"]:
+            return _build_pass_payload(
+                inspection_id,
+                timestamp,
+                img_w,
+                img_h,
+                s1_result["saliency_score"],
+                s1_result["latency_ms"],
+                disabled_stages,
+            )
 
     # --- STAGE 2: DEFECT LOCALIZATION ---
     defects = []
 
-    if stage2_model_name and stage2_model_path:
+    if enable_stage2 and stage2_model_name and stage2_model_path:
         logger.info(
             "Stage 2 | Mode: %s | Routing to Defect Localization...", stage2_mode
         )
@@ -96,32 +124,32 @@ def run_inspection(
 
     # --- STAGE 3: PANEL SEGMENTATION ---
     panels = []
-    stage3_model = model_manager.get_model(stage="stage3")
-    if stage3_model is not None:
-        logger.info("Stage 3 | Routing to Panel Segmentation...")
-        try:
-            panels = run_panel_inference(stage3_model, img_np, resolved_device)
-        except Exception as e:
-            logger.warning("Stage 3 panel inference failed: %s", e)
-            panels = []
-    else:
-        logger.warning("Stage 3 model not available, skipping panel segmentation")
+    if enable_stage3:
+        stage3_model = model_manager.get_model(stage="stage3")
+        if stage3_model is not None:
+            logger.info("Stage 3 | Routing to Panel Segmentation...")
+            try:
+                panels = run_panel_inference(stage3_model, img_np, resolved_device)
+            except Exception as e:
+                logger.warning("Stage 3 panel inference failed: %s", e)
+                panels = []
+        else:
+            logger.warning("Stage 3 model not available, skipping panel segmentation")
 
     # --- STAGE 4: IoD FUSION ---
     suppressed_detections = []
-    if panels and defects:
+    if defects:
         logger.info("Stage 4 | Routing to IoD Fusion...")
         defects, suppressed_detections = assign_defects_to_panels(defects, panels)
 
+    binary_mask = s1_result["binary_mask"] if s1_result is not None else None
     unclassified_anomalies, suppressed_blobs = rescue_unclassified_anomalies(
-        s1_result["binary_mask"], defects, panels, inspection_id
+        binary_mask, defects, panels, inspection_id
     )
     suppressed_detections.extend(suppressed_blobs)
-    stage1_blobs = extract_stage1_blobs(
-        s1_result["binary_mask"], inspection_id, panels=panels
-    )
+    stage1_blobs = extract_stage1_blobs(binary_mask, inspection_id, panels=panels)
 
-    inspection_status = "FAIL" if len(defects) > 0 else "PASS"
+    inspection_status = "FAIL" if defects or unclassified_anomalies else "PASS"
 
     pydantic_defects = [d if isinstance(d, Defect) else Defect(**d) for d in defects]
 
@@ -142,19 +170,27 @@ def run_inspection(
         inspection_status=inspection_status,
         defects=pydantic_defects,
         imageDims={"width": img_w, "height": img_h},
-        preScreen={
-            "anomalyDetected": s1_result["is_active"],
-            "score": s1_result["saliency_score"],
-            "latencyMs": s1_result["latency_ms"],
-        },
+        preScreen=(
+            None
+            if s1_result is None
+            else {
+                "anomalyDetected": s1_result["is_active"],
+                "score": s1_result["saliency_score"],
+                "latencyMs": s1_result["latency_ms"],
+            }
+        ),
         panels=payload_panels,
         unclassified_anomalies=unclassified_anomalies,
         suppressed_detections=suppressed_detections,
         stage1_blobs=stage1_blobs,
+        disabled_stages=disabled_stages,
     )
 
 
-def _build_pass_payload(inspection_id, timestamp, w, h, score, latency):
+def _build_pass_payload(
+    inspection_id, timestamp, w, h, score, latency, disabled_stages=None
+):
+    disabled = list(disabled_stages or [])
     return InspectionPayload(
         inspection_id=inspection_id,
         timestamp=timestamp,
@@ -163,6 +199,11 @@ def _build_pass_payload(inspection_id, timestamp, w, h, score, latency):
         inspection_status="PASS",
         defects=[],
         imageDims={"width": w, "height": h},
-        preScreen={"anomalyDetected": False, "score": score, "latencyMs": latency},
+        preScreen=(
+            None
+            if "stage1" in disabled
+            else {"anomalyDetected": False, "score": score, "latencyMs": latency}
+        ),
         panels=[],
+        disabled_stages=disabled,
     )

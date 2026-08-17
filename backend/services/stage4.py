@@ -217,7 +217,9 @@ def assign_defects_to_panels(defects, panels, iod_threshold=0.1):
 
         _set_field(defect, "assigned_panel", panel_id)
         _set_field(defect, "containment_ratio_iod", best_iod)
-        if panel_id == "Unknown":
+        if not panels:
+            _set_field(defect, "damage_severity_index_dsi", None)
+        elif panel_id == "Unknown":
             _set_field(defect, "damage_severity_index_dsi", 0.0)
         else:
             assigned_count += 1
