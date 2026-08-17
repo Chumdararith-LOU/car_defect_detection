@@ -88,6 +88,7 @@ backend/data/*.db
 backend/data/inspections/
 backend/data/logs/
 backend/data/configs/training/
+backend/data/audits/
 
 # Deployment symlinks — recreated by model registry on deploy
 backend/models/*/deployed.pt
