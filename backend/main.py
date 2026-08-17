@@ -16,6 +16,7 @@ from api.dataset_prep import router as dataset_prep_router
 from api.experiments import router as experiments_router
 from api.model_registry import router as model_registry_router
 from api.taxonomy import router as taxonomy_router
+from api.checkpoints import router as checkpoints_router
 
 app = FastAPI(title=settings.app_name)
 
@@ -27,11 +28,13 @@ def init_review_db() -> None:
 
 @app.on_event("startup")
 def init_platform_tables() -> None:
+    from services.checkpoint_registry import ensure_native_checkpoints
     from services.platform_db import init_platform_tables as _init
     from services.taxonomy_service import ensure_default_taxonomies
 
     _init()
     ensure_default_taxonomies()
+    ensure_native_checkpoints()
 
 
 origins = [
@@ -63,3 +66,4 @@ app.include_router(dataset_prep_router)
 app.include_router(experiments_router)
 app.include_router(model_registry_router)
 app.include_router(taxonomy_router)
+app.include_router(checkpoints_router)
