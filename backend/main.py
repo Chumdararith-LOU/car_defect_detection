@@ -20,6 +20,7 @@ from api.checkpoints import router as checkpoints_router
 from api.dataset_audit import router as dataset_audit_router
 from api.surgery import router as surgery_router
 from api.recipes import router as recipes_router
+from api.chains import router as chains_router
 
 app = FastAPI(title=settings.app_name)
 
@@ -33,6 +34,7 @@ def init_review_db() -> None:
 def init_platform_tables() -> None:
     from services.checkpoint_registry import ensure_native_checkpoints
     from services.platform_db import init_platform_tables as _init
+    from services.chain_service import seed_champion_chain
     from services.recipe_service import seed_presets
     from services.taxonomy_service import ensure_default_taxonomies
 
@@ -40,6 +42,7 @@ def init_platform_tables() -> None:
     ensure_default_taxonomies()
     ensure_native_checkpoints()
     seed_presets()
+    seed_champion_chain()
 
 
 origins = [
@@ -75,3 +78,4 @@ app.include_router(checkpoints_router)
 app.include_router(dataset_audit_router)
 app.include_router(surgery_router)
 app.include_router(recipes_router)
+app.include_router(chains_router)
