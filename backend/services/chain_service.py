@@ -198,6 +198,11 @@ def _run_chain(run_id: str, chain: dict) -> None:
             if not dataset:
                 raise ValueError(f"dataset not found: {step['dataset_id']}")
 
+            # Convert Pydantic model to dict for uniform access
+            dataset_dict = (
+                dataset.model_dump() if hasattr(dataset, "model_dump") else dataset
+            )
+
             base_id = _resolve_base(step, recipe, prev_output_checkpoint_id)
             checkpoint = checkpoint_registry.get_checkpoint(base_id)
             if not checkpoint.get("exists"):
@@ -206,11 +211,11 @@ def _run_chain(run_id: str, chain: dict) -> None:
             safe = re.sub(r"[^A-Za-z0-9_-]+", "_", chain["name"]).strip("_") or "chain"
             run_name = f"{safe}_s{idx}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             config = build_config_from_recipe(
-                recipe, dataset["yaml_path"], checkpoint["path"], run_name
+                recipe, dataset_dict["yaml_path"], checkpoint["path"], run_name
             )
             request = LaunchRequest(
                 stage=StageType(recipe["stage"]),
-                dataset_path=dataset["yaml_path"],
+                dataset_path=dataset_dict["yaml_path"],
                 dataset_id=step["dataset_id"],
                 recipe_id=recipe["id"],
                 base_checkpoint_id=base_id,
