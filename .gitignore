@@ -93,3 +93,11 @@ backend/data/surgery/
 
 # Deployment symlinks — recreated by model registry on deploy
 backend/models/*/deployed.pt
+
+# ─── Frontend (monorepo) ───────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.env.local
+frontend/.env.*.local
+frontend/bun.lock

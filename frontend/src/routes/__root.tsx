@@ -1,0 +1,222 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  Outlet,
+  Link,
+  createRootRouteWithContext,
+  useRouter,
+  HeadContent,
+  Scripts,
+} from "@tanstack/react-router";
+import { useEffect, type ReactNode } from "react";
+import { Cpu } from "lucide-react";
+import appCss from "../styles.css?url";
+import { reportLovableError } from "../lib/lovable-error-reporting";
+import { Toaster } from "@/components/ui/sonner";
+
+function NotFoundComponent() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="max-w-md text-center">
+        <h1 className="text-7xl font-bold text-foreground">404</h1>
+        <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          The page you're looking for doesn't exist or has been moved.
+        </p>
+        <div className="mt-6">
+          <Link
+            to="/"
+            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            Go home
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+  console.error(error);
+  const router = useRouter();
+  useEffect(() => {
+    reportLovableError(error, { boundary: "tanstack_root_error_component" });
+  }, [error]);
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="max-w-md text-center">
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">
+          This page didn't load
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Something went wrong on our end. You can try refreshing or head back home.
+        </p>
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
+          <button
+            onClick={() => {
+              router.invalidate();
+              reset();
+            }}
+            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            Try again
+          </button>
+          <a
+            href="/"
+            className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            Go home
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  head: () => ({
+    meta: [
+      { charSet: "utf-8" },
+      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { title: "AI Exterior Defect Inspection Dashboard" },
+      {
+        name: "description",
+        content:
+          "Multi-stage AI pipeline for component-aware automotive exterior defect detection.",
+      },
+      { name: "author", content: "AI Farm Robotics" },
+      {
+        property: "og:title",
+        content: "AI Exterior Defect Inspection Dashboard",
+      },
+      {
+        property: "og:description",
+        content: "Pre-screen, tiled detection, and component context mapping for automotive QA.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+    links: [
+      {
+        rel: "stylesheet",
+        href: appCss,
+      },
+      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+      },
+    ],
+  }),
+  shellComponent: RootShell,
+  component: RootComponent,
+  notFoundComponent: NotFoundComponent,
+  errorComponent: ErrorComponent,
+});
+
+function RootShell({ children }: { children: ReactNode }) {
+  return (
+    <html lang="en">
+      <head>
+        <HeadContent />
+      </head>
+      <body>
+        {children}
+        <Scripts />
+      </body>
+    </html>
+  );
+}
+
+function RootComponent() {
+  const { queryClient } = Route.useRouteContext();
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <nav className="border-b border-border bg-card">
+        <div className="flex items-center gap-0">
+          <Link
+            to="/"
+            className="px-4 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground border-b-2 border-transparent hover:text-foreground transition-colors"
+            activeProps={{
+              className:
+                "px-4 py-3 font-mono text-[10px] uppercase tracking-widest text-foreground border-b-2 border-primary transition-colors",
+            }}
+          >
+            Inspection
+          </Link>
+          <Link
+            to="/host"
+            className="px-4 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground border-b-2 border-transparent hover:text-foreground transition-colors"
+            activeProps={{
+              className:
+                "px-4 py-3 font-mono text-[10px] uppercase tracking-widest text-foreground border-b-2 border-primary transition-colors",
+            }}
+          >
+            Host System
+          </Link>
+          <Link
+            to="/review"
+            className="px-4 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground border-b-2 border-transparent hover:text-foreground transition-colors"
+            activeProps={{
+              className:
+                "px-4 py-3 font-mono text-[10px] uppercase tracking-widest text-foreground border-b-2 border-primary transition-colors",
+            }}
+          >
+            Review Queue
+          </Link>
+          <Link
+            to="/datasets"
+            activeProps={{ className: "text-primary font-semibold" }}
+            inactiveProps={{
+              className: "text-muted-foreground hover:text-foreground",
+            }}
+            className="text-sm transition-colors"
+          >
+            Datasets
+          </Link>
+          <Link
+            to="/experiments"
+            className="px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            activeProps={{
+              className: "px-3 py-2 rounded-md text-sm font-medium bg-primary/10 text-primary",
+            }}
+          >
+            Experiments
+          </Link>
+          <Link
+            to="/models"
+            className="px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            activeProps={{
+              className: "px-3 py-2 rounded-md text-sm font-medium bg-primary/10 text-primary",
+            }}
+          >
+            Models
+          </Link>
+          <Link
+            to="/training"
+            className="px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            activeProps={{
+              className: "px-3 py-2 rounded-md text-sm font-medium bg-primary/10 text-primary",
+            }}
+          >
+            Training
+          </Link>
+          <Link
+            to="/settings"
+            className="px-4 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground border-b-2 border-transparent hover:text-foreground transition-colors"
+            activeProps={{
+              className:
+                "px-4 py-3 font-mono text-[10px] uppercase tracking-widest text-foreground border-b-2 border-primary transition-colors",
+            }}
+          >
+            Settings
+          </Link>
+        </div>
+      </nav>
+      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+      <Outlet />
+      <Toaster />
+    </QueryClientProvider>
+  );
+}
