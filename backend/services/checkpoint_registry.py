@@ -114,6 +114,7 @@ def register_checkpoint(
     class_names: Optional[list[str]] = None,
     architecture: Optional[str] = None,
     source_checkpoint_id: Optional[str] = None,
+    source_job_id: Optional[str] = None,
     notes: Optional[str] = None,
 ) -> dict:
     checkpoint_id = str(uuid.uuid4())
@@ -124,7 +125,7 @@ def register_checkpoint(
             INSERT INTO checkpoints
                 (id, name, path, origin, source_checkpoint_id, source_job_id,
                  stage, nc, class_names, architecture, created_at, notes)
-            VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 checkpoint_id,
@@ -132,6 +133,7 @@ def register_checkpoint(
                 str(Path(path).resolve()),
                 origin,
                 source_checkpoint_id,
+                source_job_id,
                 stage,
                 nc,
                 json.dumps(class_names) if class_names else None,

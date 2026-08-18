@@ -11,8 +11,12 @@ import threading
 import yaml
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
-from services.candidate_collector import register_candidate_from_job
+from typing import Dict, Optional
+from services import checkpoint_registry, recipe_service, taxonomy_service
+from services.candidate_collector import (
+    find_best_weights,
+    register_candidate_from_job,
+)
 from core.config import settings
 from schemas.training import JobStatus, LaunchRequest, StageType, TrainingJob
 from services.training_db import training_db
@@ -25,7 +29,7 @@ CONFIGS_DIR = PROJECT_ROOT / "backend" / "data" / "configs" / "training"
 
 # Map stage to the exact trainer script relative to PROJECT_ROOT
 TRAINER_SCRIPTS = {
-    StageType.STAGE1: "src/stage1/train/train.py",
+    StageType.STAGE1: "src/stage1/train/train_sod.py",
     StageType.STAGE2: "src/stage2/train/train.py",
     StageType.STAGE3: "src/stage3/train/train.py",
 }
@@ -62,7 +66,10 @@ def _build_merged_config(job: TrainingJob) -> Path:
         if "epochs" not in merged_config:
             merged_config["epochs"] = 1
 
-    if job.config_path:
+    seed_config = getattr(job, "config_dict", None)
+    if seed_config is not None:
+        merged_config = deep_merge(dict(seed_config), merged_config)
+    elif job.config_path:
         base_path = PROJECT_ROOT / job.config_path
         if base_path.exists():
             with open(base_path, "r") as f:
@@ -167,6 +174,12 @@ class TrainingWorker:
                     register_candidate_from_job(job)
                 except Exception:
                     logger.exception(f"Job {job.id}: candidate registration failed")
+                try:
+                    self._register_output_checkpoint(job)
+                except Exception:
+                    logger.exception(
+                        f"Job {job.id}: output checkpoint registration failed"
+                    )
             else:
                 error_msg = f"Process exited with code {process.returncode}"
                 logger.error(f"Job {job.id} failed: {error_msg}")
@@ -188,7 +201,36 @@ class TrainingWorker:
         finally:
             self.active_processes.pop(job.id, None)
 
-    def launch(self, request: LaunchRequest) -> TrainingJob:
+    def _register_output_checkpoint(self, job: TrainingJob):
+        """Register best.pt as a trained checkpoint with recipe lineage."""
+        if not job.recipe_id:
+            return
+        weights = find_best_weights(job)
+        if not weights:
+            logger.warning(
+                f"Job {job.id}: best.pt not found; output checkpoint not registered"
+            )
+            return
+        recipe = recipe_service.get_recipe(job.recipe_id)
+        taxonomy = taxonomy_service.get_taxonomy(recipe["taxonomy_id"])
+        classes = taxonomy["class_names"]
+        checkpoint = checkpoint_registry.register_checkpoint(
+            name=f"{job.run_name}_best",
+            path=str(weights),
+            origin="trained",
+            stage=recipe["stage"],
+            nc=len(classes),
+            class_names=classes,
+            source_checkpoint_id=job.base_checkpoint_id,
+            source_job_id=job.id,
+            notes=f"Recipe-driven training from '{recipe['name']}'",
+        )
+        training_db.set_output_checkpoint(job.id, checkpoint["id"])
+        logger.info(f"Job {job.id}: registered output checkpoint {checkpoint['id']}")
+
+    def launch(
+        self, request: LaunchRequest, config_dict: Optional[dict] = None
+    ) -> TrainingJob:
         """Queue and start a new training job."""
         job = TrainingJob(
             stage=request.stage,
@@ -200,7 +242,11 @@ class TrainingWorker:
             run_name=request.run_name
             or f"run_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}",
             overrides=request.overrides,
+            job_type=request.job_type,
+            recipe_id=request.recipe_id,
+            base_checkpoint_id=request.base_checkpoint_id,
         )
+        job.config_dict = config_dict
         job.log_file = str(LOGS_DIR / f"{job.id}.log")
 
         training_db.insert_job(job)

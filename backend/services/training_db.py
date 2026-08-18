@@ -14,6 +14,7 @@ class TrainingDB:
         self.conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self._create_tables()
+        self._migrate()
 
     def _create_tables(self):
         with self.conn:
@@ -34,9 +35,31 @@ class TrainingDB:
                     completed_at TEXT,
                     log_file TEXT,
                     mlflow_run_id TEXT,
-                    error_message TEXT
+                    error_message TEXT,
+                    job_type TEXT NOT NULL DEFAULT 'training',
+                    recipe_id TEXT,
+                    base_checkpoint_id TEXT,
+                    output_checkpoint_id TEXT
                 )
             """)
+
+    def _migrate(self):
+        cols = {
+            r["name"]
+            for r in self.conn.execute("PRAGMA table_info(training_jobs)").fetchall()
+        }
+        additions = {
+            "job_type": "TEXT NOT NULL DEFAULT 'training'",
+            "recipe_id": "TEXT",
+            "base_checkpoint_id": "TEXT",
+            "output_checkpoint_id": "TEXT",
+        }
+        for col, spec in additions.items():
+            if col not in cols:
+                with self.conn:
+                    self.conn.execute(
+                        f"ALTER TABLE training_jobs ADD COLUMN {col} {spec}"
+                    )
 
     def insert_job(self, job: TrainingJob) -> None:
         with self.conn:
@@ -45,8 +68,8 @@ class TrainingDB:
                 INSERT INTO training_jobs (
                     id, stage, status, dataset_path, config_path, base_model, device,
                     project_name, run_name, overrides, created_at, started_at, completed_at,
-                    log_file, mlflow_run_id, error_message
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    log_file, mlflow_run_id, error_message, job_type, recipe_id, base_checkpoint_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     job.id,
@@ -65,7 +88,17 @@ class TrainingDB:
                     job.log_file,
                     job.mlflow_run_id,
                     job.error_message,
+                    job.job_type,
+                    job.recipe_id,
+                    job.base_checkpoint_id,
                 ),
+            )
+
+    def set_output_checkpoint(self, job_id: str, output_checkpoint_id: str) -> None:
+        with self.conn:
+            self.conn.execute(
+                "UPDATE training_jobs SET output_checkpoint_id = ? WHERE id = ?",
+                (output_checkpoint_id, job_id),
             )
 
     def update_job_status(
