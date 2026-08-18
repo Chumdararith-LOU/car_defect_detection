@@ -52,7 +52,7 @@ def to_tensor(img_bgr, device):
     return t.to(device)
 
 
-def extract_patch(img, cx, cy, size=640):
+def extract_patch(img, cx, cy, size=1024):
     """Native-resolution crop centered on the target (SAHI patch simulation)."""
     H0, W0 = img.shape[:2]
     if H0 < size or W0 < size:
@@ -151,7 +151,7 @@ class XRay:
         for k, fi in enumerate(self.feat_idx):
             pmap = torch.sigmoid(self.cls_branch[k](feats[fi]))[0]  # [nc, H, W]
             _, H, W = pmap.shape
-            stride = int(640 / H)
+            stride = int(round(padded.shape[0] / H))
             gx = min(max(int(cx / stride), 0), W - 1)
             gy = min(max(int(cy / stride), 0), H - 1)
             region = pmap[

@@ -149,6 +149,23 @@ def register_checkpoint(
     return get_checkpoint(checkpoint_id)
 
 
+def _extract_nc_from_pt(path: Path) -> int:
+    """Safely extract class count (nc) from an Ultralytics .pt checkpoint."""
+    try:
+        import torch
+
+        # weights_only=False is required for Ultralytics custom classes in PyTorch 2.6+
+        ckpt = torch.load(str(path), map_location="cpu", weights_only=False)
+        model = ckpt.get("model", ckpt) if isinstance(ckpt, dict) else ckpt
+        if hasattr(model, "nc") and model.nc is not None:
+            return int(model.nc)
+        if hasattr(model, "names") and model.names is not None:
+            return len(model.names)
+    except Exception:
+        pass
+    return 0
+
+
 def _collect_candidates() -> list[dict]:
     candidates: list[dict] = []
     for fname, arch in NATIVE_COCO_ROOTS.items():
@@ -177,7 +194,7 @@ def _collect_candidates() -> list[dict]:
                     "path": str(p.resolve()),
                     "origin": "trained",
                     "stage": _guess_stage(rel),
-                    "nc": 0,
+                    "nc": _extract_nc_from_pt(p),
                     "architecture": None,
                     "notes": None,
                 }

@@ -23,7 +23,7 @@ CHAMPION_MODELS = [
     {
         "stage": "stage3",
         "name": "Stage 3 — 21-Class Panel Segmenter",
-        "path": "mlruns/Stage 3/2347b4e3ce1845cc97003d5534fedf99/artifacts/weights/best.pt",
+        "path": "archive/pre_standardization/mlruns_legacy/Stage 3/2347b4e3ce1845cc97003d5534fedf99/artifacts/weights/best.pt",
     },
 ]
 
