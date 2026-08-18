@@ -1,9 +1,8 @@
-# Operator-tunable inference config (Phase 3 validated values).
-# Preset choice: balanced = default (avoids alarm fatigue),
-#                safety   = recall-first shifts (missed defect = catastrophic).
 preset: balanced
 
 model_type: yolov8
+model_path: backend/models/stage2/deployed.pt
+device: auto # auto | cuda | mps | cpu
 
 sahi:
   slice_size: 1024      # MUST match training resolution (Native Resolution Rule)

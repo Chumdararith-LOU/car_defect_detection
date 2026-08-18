@@ -4,14 +4,14 @@ fl_gamma: 2.0
 fl_alpha: 0.50
 fl_scale: 1.0
 
-model_preset: /home/lamacpp/Documents/car_defect_detection/model5_resume_adapt/model1_remapped_7class_init.pt
+model_preset: backend/data/surgery/b0bc447f-53c7-405d-94bf-2153e19891ce/remapped_7cls.pt
 
 project_name: stage1_head_warmup_7cls_extended
 run_name: stage1_head_warmup_7cls_extended
 
 multi_scale: false
 
-dataset_config: "/home/lamacpp/Documents/car_defect_detection/data/processed/yolo_seg_clean_2200_7cls/dataset.yaml"
+dataset_config: "data/processed/yolo_seg_clean_2200_7cls/dataset.yaml"
 
 epochs: 100
 imgsz: 1024
