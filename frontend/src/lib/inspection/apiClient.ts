@@ -62,7 +62,7 @@ import type {
   TaxonomyUpdateRequest,
 } from "./platformSchema";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8010";
+const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 export interface ModelListResponse {
   models: string[];
