@@ -139,24 +139,6 @@ export function DatasetDetailPanel({ dataset, onBack, onDeleted, onDatasetChange
             </div>
           </div>
 
-          {/* Splits */}
-          <div className="space-y-2">
-            <h4 className="text-sm font-semibold">Splits</h4>
-            <div className="grid grid-cols-3 gap-2">
-              {dataset.splits.map((split) => (
-                <div
-                  key={split.name}
-                  className="rounded-md border border-border bg-muted/30 p-3 text-center"
-                >
-                  <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-                    {split.name}
-                  </p>
-                  <p className="text-lg font-semibold">{split.image_count.toLocaleString()}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
           {/* Class Distribution */}
           <div className="space-y-2">
             <h4 className="text-sm font-semibold">Class Distribution</h4>

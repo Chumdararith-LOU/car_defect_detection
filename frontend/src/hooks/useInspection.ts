@@ -140,11 +140,12 @@ function reducer(state: State, action: Action): State {
     case "set_image":
       return {
         ...state,
+        batch: null,
         imageUrl: action.url,
         imageName: action.name,
         imageFile: action.file,
         stage: "idle",
-        payload: null, // Clear old results when a new image is loaded
+        payload: null,
         message: "Ready to inspect.",
       };
     case "stage":

@@ -366,6 +366,75 @@ export function getInspectionImageUrl(inspectionId: string): string {
   return `${API_BASE}/api/import/inspections/${inspectionId}/image`;
 }
 
+export async function fetchInspectionPayload(inspectionId: string): Promise<InspectionPayload> {
+  const res = await fetch(`${API_BASE}/api/import/inspections/${inspectionId}/payload`);
+  if (!res.ok) throw new Error(`Failed to fetch inspection payload: ${res.statusText}`);
+  return res.json();
+}
+
+export interface BatchSummary {
+  batch_id: string;
+  name: string;
+  created_at: string;
+  count: number;
+  fail_count: number;
+  pass_count: number;
+  total_defects: number;
+  settings: Record<string, any>;
+  inspection_ids: string[];
+}
+
+export interface BatchListResponse {
+  batches: BatchSummary[];
+}
+
+export async function fetchBatches(): Promise<BatchListResponse> {
+  const res = await fetch(`${API_BASE}/api/batches`);
+  if (!res.ok) throw new Error(`Failed to fetch batches: ${res.statusText}`);
+  return res.json();
+}
+
+export async function createBatch(
+  inspection_ids: string[],
+  name?: string,
+  settings?: Record<string, any>,
+): Promise<BatchSummary> {
+  const res = await fetch(`${API_BASE}/api/batches`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ inspection_ids, name, settings }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Failed to create batch: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function renameBatch(batchId: string, name: string): Promise<BatchSummary> {
+  const res = await fetch(`${API_BASE}/api/batches/${batchId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Failed to rename batch: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export interface BatchSummary {
+  batch_id: string;
+  name: string;
+  created_at: string;
+  count: number;
+  fail_count: number;
+  pass_count: number;
+  total_defects: number;
+  inspection_ids: string[];
+}
+
 export async function fetchAvailableInspections(limit = 50): Promise<InspectionListResponse> {
   const res = await fetch(`${API_BASE}/api/import/inspections?limit=${limit}`);
   if (!res.ok) throw new Error(`Failed to fetch inspections: ${res.statusText}`);

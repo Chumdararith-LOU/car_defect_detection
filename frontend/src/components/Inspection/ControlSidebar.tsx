@@ -36,6 +36,7 @@ import { DEFECT_CLASSES, ALL_PANELS, PANEL_LABELS } from "@/lib/inspection/const
 import type { Filters, StageToggles } from "@/hooks/useInspection";
 import { StageStatus } from "./StageStatus";
 import { cn } from "@/lib/utils";
+import { createBatch } from "@/lib/inspection/apiClient";
 
 const VIEW_STAGES: { id: ViewStage; label: string }[] = [
   { id: 1, label: "Pre-Screen" },
@@ -70,8 +71,8 @@ interface Props {
   pendingFiles: File[] | null;
   onSetPendingFiles: (files: File[]) => void;
   onRunBatch: (items: any[], totalMs: number) => void;
+  onOpenPastBatches: () => void;
 }
-
 export function ControlSidebar({
   imageName,
   stage,
@@ -91,6 +92,7 @@ export function ControlSidebar({
   pendingFiles,
   onSetPendingFiles,
   onRunBatch,
+  onOpenPastBatches,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [models, setModels] = useState<string[]>([]);
@@ -197,6 +199,15 @@ export function ControlSidebar({
     if (items.length > 0) {
       onRunBatch(items, totalMs);
       toast.success(`Batch complete! ${items.length} images processed.`);
+      // Auto-register as a batch on the backend
+      try {
+        const ids = items.map((i) => i.payload?.inspection_id).filter(Boolean);
+        if (ids.length > 0) {
+          await createBatch(ids);
+        }
+      } catch (err) {
+        console.warn("Failed to register batch on backend:", err);
+      }
     } else {
       toast.error("Batch failed. No images processed.");
     }
@@ -306,10 +317,23 @@ export function ControlSidebar({
               className="h-1.5"
             />
           </div>
+        ) : pendingFiles && pendingFiles.length > 1 ? (
+          <p className="mt-2 text-[11px] font-medium text-green-600 dark:text-green-400">
+            ✓ {pendingFiles.length} images uploaded
+          </p>
         ) : (
           imageName && <p className="mt-2 truncate text-[11px] text-foreground/70">{imageName}</p>
         )}
       </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 w-full text-xs"
+        onClick={onOpenPastBatches}
+        disabled={running}
+      >
+        <Download className="mr-1.5 h-3 w-3" /> Import past batch
+      </Button>
       <div className="space-y-1.5">
         <p className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           Stage 1 Model

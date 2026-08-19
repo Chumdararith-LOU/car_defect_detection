@@ -36,6 +36,17 @@ def api_inspection_image(inspection_id: str):
     return FileResponse(str(img_path))
 
 
+@router.get("/api/import/inspections/{inspection_id}/payload")
+def api_inspection_payload(inspection_id: str):
+    """Serve the saved payload.json of a stored inspection."""
+    from services.inspection_store import load_inspection
+
+    payload = load_inspection(inspection_id)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Inspection payload not found")
+    return payload
+
+
 @router.delete("/api/import/inspections/{inspection_id}", status_code=204)
 def api_delete_inspection(inspection_id: str):
     """Delete a saved inspection from disk."""

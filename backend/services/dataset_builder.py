@@ -169,14 +169,17 @@ def build_dataset_from_reviews(
         processed_inspections[insp_id].append(f"{class_id} {coords}")
         stats["instances_written"] += 1
 
-    # 3. Write images and label files
+    missing_inspections: list[str] = []
     for insp_id, label_lines in processed_inspections.items():
         img_path = get_inspection_image_path(insp_id)
         if not img_path:
             stats["skipped"] += 1
+            missing_inspections.append(insp_id)
+            logger.warning(
+                f"Review references inspection '{insp_id}' but no saved image "
+                f"found on disk. Skipping."
+            )
             continue
-
-        # Unique filename to avoid collisions
         out_img_name = f"{insp_id}_{img_path.name}"
         out_img_path = images_dir / out_img_name
         shutil.copy2(img_path, out_img_path)
@@ -215,6 +218,8 @@ names: {json.dumps(class_names)}
         json.dump(manifest, f, indent=2)
 
     logger.info(f"Built dataset '{version_name}': {stats}")
+    if missing_inspections:
+        stats["missing_inspections"] = missing_inspections
     return {
         "dataset_id": version_name,
         "path": str(out_dir),

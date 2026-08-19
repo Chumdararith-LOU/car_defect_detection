@@ -7,6 +7,13 @@ import { InspectionCanvas } from "@/components/Inspection/InspectionCanvas";
 import { DefectGallery } from "@/components/Inspection/gallery";
 import { SummaryCard } from "@/components/Inspection/SummaryCard";
 import { BatchThumbnailGrid } from "@/components/Inspection/BatchThumbnailGrid";
+import { toast } from "sonner";
+import { PastBatchesDialog } from "@/components/Inspection/PastBatchesDialog";
+import {
+  type BatchSummary,
+  fetchInspectionPayload,
+  getInspectionImageUrl,
+} from "@/lib/inspection/apiClient";
 import { Button } from "@/components/ui/button";
 import { Activity, Zap, ArrowLeft } from "lucide-react";
 
@@ -49,7 +56,7 @@ function InspectionDashboard() {
   } = useInspection({ imageUrl: demoVehicle, imageName: "demo-vehicle.jpg" });
 
   const handleRunBatch = (items: any[], totalMs: number) => {
-    const batchItems: BatchItem[] = items.map((item) => ({
+    const batchItems = items.map((item: any) => ({
       inspectionId: item.payload?.inspection_id ?? "",
       filename: item.file?.name ?? "unknown",
       thumbnail: item.thumbnail as string,
@@ -62,6 +69,42 @@ function InspectionDashboard() {
       totalMs,
       deviceUsed: items[0]?.payload?.device_used ?? "auto",
     });
+  };
+  const [showPastBatches, setShowPastBatches] = useState(false);
+  const handleLoadPastBatch = async (batch: BatchSummary) => {
+    try {
+      toast.info(`Loading batch: ${batch.name}...`);
+      const items: any[] = [];
+      for (const inspId of batch.inspection_ids) {
+        try {
+          const payload = await fetchInspectionPayload(inspId);
+          const url = getInspectionImageUrl(inspId);
+          items.push({
+            inspectionId: inspId,
+            filename: (payload as any).image_filename || inspId,
+            thumbnail: url,
+            fullUrl: url,
+            payload,
+          });
+        } catch {
+          // skip unreadable inspection
+        }
+      }
+      if (items.length === 0) {
+        toast.error("No readable images in this batch.");
+        return;
+      }
+      setBatch({
+        items,
+        selectedIndex: null,
+        totalMs: 0,
+        deviceUsed: items[0].payload?.device_used ?? "saved",
+      });
+      setShowPastBatches(false);
+      toast.success(`Loaded ${items.length} saved inspections.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load batch");
+    }
   };
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
@@ -127,6 +170,7 @@ function InspectionDashboard() {
           pendingFiles={state.pendingFiles}
           onSetPendingFiles={setPendingFiles}
           onRunBatch={handleRunBatch}
+          onOpenPastBatches={() => setShowPastBatches(true)}
         />
 
         <main className="flex min-h-[500px] flex-col overflow-hidden border-border xl:border-x">
@@ -236,6 +280,11 @@ function InspectionDashboard() {
             </>
           )}
         </section>
+        <PastBatchesDialog
+          open={showPastBatches}
+          onOpenChange={setShowPastBatches}
+          onOpenBatch={handleLoadPastBatch}
+        />
       </div>
     </div>
   );

@@ -15,6 +15,7 @@ from core.config import settings
 from api.dataset_prep import router as dataset_prep_router
 from api.experiments import router as experiments_router
 from api.model_registry import router as model_registry_router
+from api.batches import router as batches_router
 from api.taxonomy import router as taxonomy_router
 from api.checkpoints import router as checkpoints_router
 from api.dataset_audit import router as dataset_audit_router
@@ -79,3 +80,4 @@ app.include_router(dataset_audit_router)
 app.include_router(surgery_router)
 app.include_router(recipes_router)
 app.include_router(chains_router)
+app.include_router(batches_router)

@@ -16,16 +16,25 @@ export function BatchThumbnailGrid({ batch, onBack, onSelect }: Props) {
   return (
     <div className="p-4 border-b border-border">
       {/* Stats Header */}
-      <div className="mb-3 flex items-center gap-3 font-mono text-[10px] text-muted-foreground">
-        <Zap className="h-3 w-3 text-amber-400" />
-        <span>Total: {(batch.totalMs / 1000).toFixed(1)}s</span>
-        <span>·</span>
-        <span>Avg: {avgMs.toFixed(0)}ms/image</span>
-        <span>·</span>
-        <span>{throughput} img/s</span>
-        <span>·</span>
-        <span>{batch.deviceUsed}</span>
-      </div>
+      {batch.totalMs > 0 ? (
+        <div className="mb-3 flex items-center gap-3 font-mono text-[10px] text-muted-foreground">
+          <Zap className="h-3 w-3 text-amber-400" />
+          <span>Total: {(batch.totalMs / 1000).toFixed(1)}s</span>
+          <span>·</span>
+          <span>Avg: {avgMs.toFixed(0)}ms/image</span>
+          <span>·</span>
+          <span>{throughput} img/s</span>
+          <span>·</span>
+          <span>{batch.deviceUsed}</span>
+        </div>
+      ) : (
+        <div className="mb-3 flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
+          <Zap className="h-3 w-3 text-amber-400" />
+          <span>
+            Loaded from history · {batch.items.length} saved inspections · {batch.deviceUsed}
+          </span>
+        </div>
+      )}
 
       {/* Thumbnail grid */}
       <div className="grid grid-cols-4 gap-2">
@@ -38,7 +47,12 @@ export function BatchThumbnailGrid({ batch, onBack, onSelect }: Props) {
               "border-border",
             )}
           >
-            <img src={item.thumbnail} alt={item.filename} className="h-full w-full object-cover" />
+            <img
+              src={item.thumbnail}
+              alt={item.filename}
+              loading="lazy"
+              className="h-full w-full object-cover"
+            />
             <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-[9px] font-mono px-1 py-0.5 truncate">
               {item.payload.total_defects_found} defects
             </div>
