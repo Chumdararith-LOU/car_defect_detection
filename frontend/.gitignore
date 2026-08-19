@@ -72,3 +72,6 @@ backend/models.agents/
 skills-lock.json
 .agents
 DESIGN_AUDIT.md
+
+# TanStack Start build output
+.output/

@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "release_tag": "v1.0.0-models",
+  "models": [
+    {
+      "stage": "stage1",
+      "filename": "sod_champion.pt",
+      "sha256": "97e85e730d746baf230a6eec37770481e7a902e72152edc329d69e2a7bdc6fa3",
+      "description": "Stage 1: Binary SOD Pre-Screener (Focal Loss, 640px tiled)"
+    },
+    {
+      "stage": "stage2",
+      "filename": "defect_champion.pt",
+      "sha256": "7e754b5126e0add162f44fd726ee79a71b78f976a8391693a4960a9ae30c71c7",
+      "description": "Stage 2: 7-Class Defect Instance Segmenter (SAHI, 1024px)"
+    },
+    {
+      "stage": "stage3",
+      "filename": "panel_champion.pt",
+      "sha256": "dd5fa1566855dbef5067697e9ad56d378f98196ede29686211c22417ab01468d",
+      "description": "Stage 3: 21-Class Panel Segmenter (640px)"
+    }
+  ]
+}
