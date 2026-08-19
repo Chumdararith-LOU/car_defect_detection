@@ -96,15 +96,19 @@ def _resolve_root_path(yaml_path: Path, yaml_data: dict) -> Path:
         return yaml_path.parent
 
     root = Path(path_str)
+
+    # Relative paths resolve against the YAML file's directory (Ultralytics convention)
+    if not root.is_absolute():
+        candidate = (yaml_path.parent / root).resolve()
+        if candidate.exists():
+            return candidate
+
+    # Absolute paths or CWD-relative fallback
     if root.exists():
-        return root
+        return root.resolve()
 
-    # Fallback: YAML file's parent directory (handles moved repos)
-    fallback = yaml_path.parent
-    if fallback.exists():
-        return fallback
-
-    return root
+    # Final fallback: YAML file's parent directory (handles moved repos)
+    return yaml_path.parent
 
 
 def _infer_stage(yaml_path: Path, yaml_data: dict) -> DatasetStage:
