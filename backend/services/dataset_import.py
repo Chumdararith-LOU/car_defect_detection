@@ -93,9 +93,8 @@ def import_inspection_to_dataset(
     dataset_id: str,
     inspection_id: str,
     split: str = "train",
+    allow_empty_labels: bool = False,
 ) -> dict:
-    """Import a saved inspection (image + defect labels) into a dataset."""
-    # Validate inspection exists
     insp_dir = INSPECTIONS_DIR / inspection_id
     if not insp_dir.exists():
         raise ValueError(f"Inspection '{inspection_id}' not found")
@@ -129,19 +128,27 @@ def import_inspection_to_dataset(
         labels_dir = root / "labels" / split
         labels_dir.mkdir(parents=True, exist_ok=True)
 
-    # Copy image with unique name
+    with open(payload_path, "r") as f:
+        payload = json.load(f)
+    class_names = get_class_names(dataset_id)
+    label_lines, skipped_classes = _payload_to_yolo_labels(payload, class_names)
+
+    if len(label_lines) == 0 and not allow_empty_labels:
+        payload_classes = sorted(
+            {d.get("class", "") for d in payload.get("defects", []) if d.get("class")}
+        )
+        raise ValueError(
+            f"Import blocked: inspection '{inspection_id}' would create an "
+            f"empty-label image (teaches the model defects are absent). "
+            f"Inspection classes: {payload_classes or 'none (PASS)'} | "
+            f"dataset taxonomy: {class_names} | "
+            f"taxonomy-mismatch skipped: {sorted(skipped_classes) or 'none'}. "
+            f"Use allow_empty_labels=true only for intentional background images."
+        )
+
     out_image_name = f"{inspection_id}_{source_image.name}"
     out_image_path = images_dir / out_image_name
     shutil.copy2(source_image, out_image_path)
-
-    # Generate YOLO label from payload defects
-    with open(payload_path, "r") as f:
-        payload = json.load(f)
-
-    class_names = get_class_names(dataset_id)
-    label_lines = _payload_to_yolo_labels(payload, class_names)
-
-    # Write label file
     out_label_name = f"{inspection_id}_{source_image.stem}.txt"
     out_label_path = labels_dir / out_label_name
     with open(out_label_path, "w") as f:
@@ -152,38 +159,31 @@ def import_inspection_to_dataset(
         "message": f"Imported inspection '{inspection_id}' into '{dataset_id}' ({split})",
         "image_filename": out_image_name,
         "labels_written": len(label_lines),
+        "skipped_classes": sorted(skipped_classes),
     }
 
 
-def _payload_to_yolo_labels(payload: dict, class_names: list[str]) -> list[str]:
-    """Convert inspection payload defects to YOLO label lines."""
+def _payload_to_yolo_labels(
+    payload: dict, class_names: list[str]
+) -> tuple[list[str], set[str]]:
+    """Convert inspection payload defects to YOLO label lines.
+    Returns (lines, skipped_classes)."""
     lines = []
+    skipped: set[str] = set()
     defects = payload.get("defects", [])
-
     for defect in defects:
         class_name = defect.get("class", "")
         polygon = defect.get("polygon", [])
-
         if not class_name or not polygon:
             continue
-
-        # Find class_id
         if class_name not in class_names:
             logger.warning(f"Class '{class_name}' not in dataset taxonomy. Skipping.")
+            skipped.add(class_name)
             continue
-
         class_id = class_names.index(class_name)
-
-        # Flatten polygon to YOLO format
         coords = " ".join(f"{x} {y}" for x, y in polygon)
         lines.append(f"{class_id} {coords}")
-
-    return lines
-
-
-# ---------------------------------------------------------------------------
-# Direct file upload
-# ---------------------------------------------------------------------------
+    return lines, skipped
 
 
 def upload_image_to_dataset(
@@ -193,7 +193,6 @@ def upload_image_to_dataset(
     split: str = "train",
 ) -> dict:
     """Upload an image directly into a dataset (creates empty label file)."""
-    # Validate extension
     ext = Path(filename).suffix.lower()
     if ext not in IMAGE_EXTENSIONS:
         raise ValueError(

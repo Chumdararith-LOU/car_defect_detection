@@ -316,7 +316,6 @@ def resplit_dataset(
     if abs((train_ratio + val_ratio + test_ratio) - 1.0) > 1e-5:
         raise ValueError("Ratios must sum to 1.0")
 
-    # 1. Find existing yaml to preserve class names + write back in place
     data_yaml = _find_data_yaml(root)
     yaml_data = {}
     if data_yaml:
@@ -326,12 +325,10 @@ def resplit_dataset(
         except Exception:
             pass
 
-    # 2. Gather (image, annotation, kind) tuples
     pairs: list[tuple[Path, Path, str]] = []
     for img_path in root.rglob("*"):
         if not img_path.is_file() or img_path.suffix.lower() not in IMAGE_EXTENSIONS:
             continue
-        # Skip temp leftovers and mask files (masks are images too)
         if "_temp_resplit" in img_path.parts or "masks" in img_path.parts:
             continue
         ann_path, ann_kind = _find_annotation_for_image(img_path)
@@ -402,7 +399,6 @@ def resplit_dataset(
                 str(target_ann_dir / ann_path.name),
             )
 
-    # Cleanup empty source dirs
     for split in ("train", "val", "test"):
         for subdir in ("images", "labels", "masks"):
             d = root / subdir / split
@@ -417,7 +413,6 @@ def resplit_dataset(
         except OSError:
             pass
 
-    # 5. Write yaml back IN PLACE (avoids duplicate yaml files in registry)
     names = yaml_data.get("names", {})
     nc = yaml_data.get("nc", len(names) if isinstance(names, dict) else 0)
 
@@ -437,5 +432,4 @@ def resplit_dataset(
     with open(target_yaml, "w") as f:
         yaml.dump(yaml_content, f, default_flow_style=False, sort_keys=False)
 
-    # 6. Re-detect and return new structure
     return _detect(root, dataset_id)

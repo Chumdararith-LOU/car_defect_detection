@@ -40,6 +40,7 @@ def api_delete_inspection(inspection_id: str):
 class InspectionImportRequest(BaseModel):
     inspection_id: str
     split: str = "train"
+    allow_empty_labels: bool = False
 
 
 @router.post("/api/datasets/{dataset_id}/import/inspection")
@@ -50,6 +51,7 @@ def api_import_inspection(dataset_id: str, body: InspectionImportRequest):
             dataset_id=dataset_id,
             inspection_id=body.inspection_id,
             split=body.split,
+            allow_empty_labels=body.allow_empty_labels,
         )
         return result
     except ValueError as ve:

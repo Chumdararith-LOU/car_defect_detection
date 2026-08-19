@@ -22,9 +22,10 @@ interface Props {
   dataset: DatasetDetail;
   onBack: () => void;
   onDeleted: () => void;
+  onDatasetChanged?: () => void;
 }
 
-export function DatasetDetailPanel({ dataset, onBack, onDeleted }: Props) {
+export function DatasetDetailPanel({ dataset, onBack, onDeleted, onDatasetChanged }: Props) {
   const [galleryKey, setGalleryKey] = useState(0);
   const [auditReport, setAuditReport] = useState<AuditReport | null>(null);
   const [auditLoading, setAuditLoading] = useState(true);
@@ -169,7 +170,10 @@ export function DatasetDetailPanel({ dataset, onBack, onDeleted }: Props) {
         datasetId={dataset.dataset_id}
         datasetName={dataset.name}
         totalImages={dataset.total_images}
-        onPrepComplete={() => setGalleryKey((k) => k + 1)}
+        onPrepComplete={() => {
+          setGalleryKey((k) => k + 1);
+          onDatasetChanged?.();
+        }}
       />
 
       {/* Leakage Audit */}
@@ -186,7 +190,10 @@ export function DatasetDetailPanel({ dataset, onBack, onDeleted }: Props) {
       {/* Import Tools */}
       <ImportPanel
         datasetId={dataset.dataset_id}
-        onImportComplete={() => setGalleryKey((k) => k + 1)}
+        onImportComplete={() => {
+          setGalleryKey((k) => k + 1);
+          onDatasetChanged?.();
+        }}
       />
 
       {/* Image Browser */}

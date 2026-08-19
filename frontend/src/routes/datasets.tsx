@@ -19,9 +19,7 @@ type ViewMode = "list" | "detail" | "builder";
 
 function DatasetsPage() {
   const [datasets, setDatasets] = useState<DatasetSummary[]>([]);
-  const [selectedDetail, setSelectedDetail] = useState<DatasetDetail | null>(
-    null,
-  );
+  const [selectedDetail, setSelectedDetail] = useState<DatasetDetail | null>(null);
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -61,6 +59,15 @@ function DatasetsPage() {
     setSelectedDetail(null);
     setViewMode("list");
   };
+  const refreshDetail = async () => {
+    if (!selectedDetail) return;
+    try {
+      const fresh = await fetchDatasetDetail(selectedDetail.dataset_id);
+      setSelectedDetail(fresh);
+    } catch (err: any) {
+      setError(err.message || "Failed to refresh dataset detail");
+    }
+  };
 
   const handleOpenBuilder = () => {
     setSelectedDetail(null);
@@ -75,12 +82,10 @@ function DatasetsPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Dataset Management
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Dataset Management</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Engineer workspace. List dataset versions, audit leakage, and build
-            new datasets from the data flywheel.
+            Engineer workspace. List dataset versions, audit leakage, and build new datasets from
+            the data flywheel.
           </p>
         </div>
         {!selectedDetail && (
@@ -119,30 +124,24 @@ function DatasetsPage() {
         <ReviewToDatasetBuilder onBack={handleBackFromBuilder} />
       )}
 
-      {!loading &&
-        !error &&
-        !detailLoading &&
-        viewMode === "detail" &&
-        selectedDetail && (
-          <DatasetDetailPanel
-            dataset={selectedDetail}
-            onBack={handleBack}
-            onDeleted={() => {
-              setSelectedDetail(null);
-              setViewMode("list");
-              loadDatasets(); // Refresh the list
-            }}
-          />
-        )}
+      {!loading && !error && !detailLoading && viewMode === "detail" && selectedDetail && (
+        <DatasetDetailPanel
+          dataset={selectedDetail}
+          onBack={handleBack}
+          onDatasetChanged={refreshDetail}
+          onDeleted={() => {
+            setSelectedDetail(null);
+            setViewMode("list");
+            loadDatasets(); // Refresh the list
+          }}
+        />
+      )}
 
       {!loading && !error && !detailLoading && !selectedDetail && (
         <DatasetListView datasets={datasets} onSelect={handleSelect} />
       )}
       {showNewDialog && (
-        <NewDatasetDialog
-          onClose={() => setShowNewDialog(false)}
-          onCreated={loadDatasets}
-        />
+        <NewDatasetDialog onClose={() => setShowNewDialog(false)} onCreated={loadDatasets} />
       )}
     </div>
   );
