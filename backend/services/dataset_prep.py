@@ -65,8 +65,13 @@ def _find_dataset_root(dataset_id: str) -> Path | None:
                 yaml_data = yaml.safe_load(f)
             if yaml_data and "path" in yaml_data:
                 root = Path(yaml_data["path"])
+                # Relative paths resolve against the YAML file's directory (Ultralytics convention)
+                if not root.is_absolute():
+                    candidate = (yaml_file.parent / root).resolve()
+                    if candidate.exists():
+                        return candidate
                 if root.exists():
-                    return root
+                    return root.resolve()
             # Fallback: YAML file's parent
             return yaml_file.parent
 
