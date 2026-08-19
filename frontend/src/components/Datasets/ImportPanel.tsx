@@ -5,16 +5,15 @@ import { ZipUploader } from "./ZipUploader";
 
 interface Props {
   datasetId: string;
+  datasetName?: string;
   onImportComplete: () => void;
 }
 
-export function ImportPanel({ datasetId, onImportComplete }: Props) {
+export function ImportPanel({ datasetId, datasetName, onImportComplete }: Props) {
   const [mode, setMode] = useState<"flywheel" | "zip">("flywheel");
   return (
     <div className="rounded-lg border border-border bg-card p-5 space-y-4">
-      <h3 className="text-base font-semibold flex items-center gap-2">
-        Import Images
-      </h3>
+      <h3 className="text-base font-semibold flex items-center gap-2">Import Images</h3>
 
       <div className="flex gap-2 border-b border-border pb-2">
         <button
@@ -40,11 +39,17 @@ export function ImportPanel({ datasetId, onImportComplete }: Props) {
       </div>
 
       {mode === "flywheel" && (
-        <InspectionPicker datasetId={datasetId} onComplete={onImportComplete} />
+        <>
+          {datasetName && (
+            <p className="text-xs text-muted-foreground">
+              Importing into:{" "}
+              <span className="font-mono font-medium text-foreground">{datasetName}</span>
+            </p>
+          )}
+          <InspectionPicker datasetId={datasetId} onComplete={onImportComplete} />
+        </>
       )}
-      {mode === "zip" && (
-        <ZipUploader datasetId={datasetId} onComplete={onImportComplete} />
-      )}
+      {mode === "zip" && <ZipUploader datasetId={datasetId} onComplete={onImportComplete} />}
     </div>
   );
 }

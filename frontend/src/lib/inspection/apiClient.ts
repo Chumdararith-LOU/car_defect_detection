@@ -362,6 +362,10 @@ export async function deleteAnnotation(
   return res.json();
 }
 
+export function getInspectionImageUrl(inspectionId: string): string {
+  return `${API_BASE}/api/import/inspections/${inspectionId}/image`;
+}
+
 export async function fetchAvailableInspections(limit = 50): Promise<InspectionListResponse> {
   const res = await fetch(`${API_BASE}/api/import/inspections?limit=${limit}`);
   if (!res.ok) throw new Error(`Failed to fetch inspections: ${res.statusText}`);

@@ -1,11 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Hammer, Loader2, ArrowLeft } from "lucide-react";
-import type {
-  ReviewItem,
-  DatasetStage,
-  DatasetBuildResponse,
-} from "@/lib/inspection/schema";
+import type { ReviewItem, DatasetStage, DatasetBuildResponse } from "@/lib/inspection/schema";
 import { fetchAllReviews, buildDataset } from "@/lib/inspection/apiClient";
 
 interface Props {
@@ -42,7 +38,6 @@ export function ReviewToDatasetBuilder({ onBack }: Props) {
     load();
   }, []);
 
-  // Compute counts by decision type
   const counts = {
     confirm: reviews.filter((r) => r.operator_decision === "confirm").length,
     reject: reviews.filter((r) => r.operator_decision === "reject").length,
@@ -50,10 +45,12 @@ export function ReviewToDatasetBuilder({ onBack }: Props) {
     unclear: reviews.filter((r) => r.operator_decision === "unclear").length,
   };
 
+  const confirmedPlusReclass = counts.confirm + counts.reclassify;
   const totalSelected =
-    (includeConfirmed ? counts.confirm : 0) +
+    (includeConfirmed ? confirmedPlusReclass : 0) +
     (includeRejected ? counts.reject : 0) +
     (includeUnclear ? counts.unclear : 0);
+  const onlyNegatives = totalSelected > 0 && confirmedPlusReclass === 0 && counts.unclear === 0;
 
   const canBuild = versionName.trim().length > 0 && totalSelected > 0;
 
@@ -104,7 +101,9 @@ export function ReviewToDatasetBuilder({ onBack }: Props) {
         {/* Review counts */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="rounded-md border border-green-500/30 bg-green-500/10 p-3 text-center">
-            <p className="text-2xl font-bold text-green-600 dark:text-green-400">{counts.confirm}</p>
+            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+              {counts.confirm}
+            </p>
             <p className="text-xs text-muted-foreground">Confirmed</p>
           </div>
           <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-center">
@@ -112,11 +111,15 @@ export function ReviewToDatasetBuilder({ onBack }: Props) {
             <p className="text-xs text-muted-foreground">Rejected</p>
           </div>
           <div className="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-center">
-            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{counts.reclassify}</p>
+            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+              {counts.reclassify}
+            </p>
             <p className="text-xs text-muted-foreground">Reclassified</p>
           </div>
           <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-center">
-            <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{counts.unclear}</p>
+            <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+              {counts.unclear}
+            </p>
             <p className="text-xs text-muted-foreground">Unclear</p>
           </div>
         </div>
@@ -132,7 +135,7 @@ export function ReviewToDatasetBuilder({ onBack }: Props) {
                 onChange={(e) => setIncludeConfirmed(e.target.checked)}
                 className="rounded border-gray-300"
               />
-              Confirmed ({counts.confirm})
+              Confirmed + Reclassified ({confirmedPlusReclass})
             </label>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input
@@ -155,6 +158,20 @@ export function ReviewToDatasetBuilder({ onBack }: Props) {
           </div>
         </div>
 
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <p>• Confirmed = model label kept as-is. Reclassified = your corrected class is used.</p>
+          <p>
+            • Rejected = image enters as background (empty label) for false-positive suppression.
+          </p>
+          <p>• Unclear = ambiguous; never becomes a label.</p>
+        </div>
+        {onlyNegatives && (
+          <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-600 dark:text-yellow-400">
+            Warning: only rejected reviews selected — the dataset will contain empty-label
+            (background) images only. Mix it into a clean dataset for hard-negative training; never
+            train on it alone.
+          </div>
+        )}
         {/* Form fields */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="space-y-1.5">
@@ -196,7 +213,9 @@ export function ReviewToDatasetBuilder({ onBack }: Props) {
           <Button
             onClick={handleBuild}
             disabled={!canBuild || building}
-            title={!canBuild ? "Enter a version name and select at least one review type" : undefined}
+            title={
+              !canBuild ? "Enter a version name and select at least one review type" : undefined
+            }
           >
             {building ? (
               <>
@@ -211,9 +230,7 @@ export function ReviewToDatasetBuilder({ onBack }: Props) {
             )}
           </Button>
           {totalSelected === 0 && (
-            <span className="text-xs text-muted-foreground">
-              No items selected
-            </span>
+            <span className="text-xs text-muted-foreground">No items selected</span>
           )}
         </div>
 

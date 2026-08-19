@@ -130,7 +130,15 @@ def import_inspection_to_dataset(
 
     with open(payload_path, "r") as f:
         payload = json.load(f)
-    class_names = get_class_names(dataset_id)
+    raw_names = get_class_names(dataset_id)
+    # Normalize dict {0: 'dent'} vs list ['dent'] shapes
+    if isinstance(raw_names, dict):
+        class_names = [
+            str(raw_names[k])
+            for k in sorted(raw_names, key=lambda x: int(x) if str(x).isdigit() else 0)
+        ]
+    else:
+        class_names = [str(n) for n in raw_names]
     label_lines, skipped_classes = _payload_to_yolo_labels(payload, class_names)
 
     if len(label_lines) == 0 and not allow_empty_labels:

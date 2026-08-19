@@ -7,19 +7,21 @@ import {
   fetchAvailableInspections,
   importInspectionToDataset,
   deleteInspection,
+  getInspectionImageUrl,
 } from "@/lib/inspection/apiClient";
 
 interface Props {
   datasetId: string;
+  datasetName?: string;
   onComplete: () => void;
 }
 
-export function InspectionPicker({ datasetId, onComplete }: Props) {
+export function InspectionPicker({ datasetId, datasetName, onComplete }: Props) {
   const [inspections, setInspections] = useState<SavedInspection[]>([]);
   const [loading, setLoading] = useState(true);
   const [importingId, setImportingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [successId, setSuccessId] = useState<string | null>(null);
+  const [importedIds, setImportedIds] = useState<Set<string>>(new Set());
   const [split, setSplit] = useState("train");
 
   useEffect(() => {
@@ -32,9 +34,18 @@ export function InspectionPicker({ datasetId, onComplete }: Props) {
   const handleImport = async (inspectionId: string) => {
     setImportingId(inspectionId);
     try {
-      await importInspectionToDataset(datasetId, inspectionId, split);
-      setSuccessId(inspectionId);
-      setTimeout(() => setSuccessId(null), 2000);
+      const result = await importInspectionToDataset(datasetId, inspectionId, split);
+      const labels = (result as { labels_written?: number }).labels_written ?? 0;
+      const skipped = (result as { skipped_classes?: string[] }).skipped_classes ?? [];
+      setImportedIds((prev) => new Set(prev).add(inspectionId));
+      toast.success(
+        `Imported ${inspectionId} into ${datasetName ?? datasetId} (${split}) — ${labels} labels written`,
+      );
+      if (skipped.length > 0) {
+        toast.warning(
+          `Taxonomy mismatch: skipped ${skipped.join(", ")} (not in ${datasetName ?? datasetId})`,
+        );
+      }
       onComplete();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -68,6 +79,9 @@ export function InspectionPicker({ datasetId, onComplete }: Props) {
 
   return (
     <div className="space-y-3">
+      <div className="rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-xs">
+        Importing into: <span className="font-mono font-semibold">{datasetName ?? datasetId}</span>
+      </div>
       <div className="flex items-center gap-2 text-sm">
         <label className="font-medium">Target Split:</label>
         <select
@@ -87,12 +101,23 @@ export function InspectionPicker({ datasetId, onComplete }: Props) {
             key={insp.inspection_id}
             className="flex items-center justify-between p-3 text-sm hover:bg-muted/30"
           >
-            <div>
-              <p className="font-mono text-xs font-medium">{insp.inspection_id}</p>
-              <p className="text-xs text-muted-foreground">
-                {insp.defect_count} defects • {insp.inspection_status} •{" "}
-                {new Date(insp.timestamp).toLocaleDateString()}
-              </p>
+            <div className="flex min-w-0 items-center gap-3">
+              <img
+                src={getInspectionImageUrl(insp.inspection_id)}
+                alt={insp.inspection_id}
+                loading="lazy"
+                className="h-10 w-14 shrink-0 rounded border border-border object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.visibility = "hidden";
+                }}
+              />
+              <div className="min-w-0">
+                <p className="font-mono text-xs font-medium truncate">{insp.inspection_id}</p>
+                <p className="text-xs text-muted-foreground">
+                  {insp.defect_count} defects • {insp.inspection_status} •{" "}
+                  {new Date(insp.timestamp).toLocaleDateString()}
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -111,15 +136,15 @@ export function InspectionPicker({ datasetId, onComplete }: Props) {
               </Button>
               <Button
                 size="sm"
-                variant={successId === insp.inspection_id ? "default" : "outline"}
+                variant={importedIds.has(insp.inspection_id) ? "default" : "outline"}
                 onClick={() => handleImport(insp.inspection_id)}
-                disabled={importingId !== null || successId === insp.inspection_id}
+                disabled={importingId !== null || importedIds.has(insp.inspection_id)}
               >
                 {importingId === insp.inspection_id ? (
                   <>
                     <Loader2 className="h-3 w-3 mr-1 animate-spin" /> Importing...
                   </>
-                ) : successId === insp.inspection_id ? (
+                ) : importedIds.has(insp.inspection_id) ? (
                   <>
                     <CheckCircle className="h-3 w-3 mr-1" /> Imported
                   </>
