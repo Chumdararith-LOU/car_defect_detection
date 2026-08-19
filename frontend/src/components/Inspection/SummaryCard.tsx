@@ -1,7 +1,6 @@
 import type { InspectionPayload } from "@/lib/inspection/schema";
 import { cn } from "@/lib/utils";
 import { Car, AlertOctagon, CheckCircle2 } from "lucide-react";
-import { ExportReportButton } from "./export";
 
 export function SummaryCard({
   payload,
@@ -112,9 +111,6 @@ export function SummaryCard({
           </dd>
         </div>
       </dl>
-      <div className="mt-3 border-t border-border pt-3">
-        <ExportReportButton payload={payload} />
-      </div>
     </div>
   );
 }

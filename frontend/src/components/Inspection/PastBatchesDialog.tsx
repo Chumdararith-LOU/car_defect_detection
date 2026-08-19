@@ -7,10 +7,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Loader2, Pencil, Check, X } from "lucide-react";
+import { Loader2, Pencil, Check, X, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { fetchBatches, renameBatch, type BatchSummary } from "@/lib/inspection/apiClient";
-
+import { ConfirmDialog } from "@/components/Shared";
+import { fetchBatches, renameBatch, deleteBatch, type BatchSummary } from "@/lib/inspection/apiClient";
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -22,6 +22,22 @@ export function PastBatchesDialog({ open, onOpenChange, onOpenBatch }: Props) {
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDeleteBatch = async (batchId: string) => {
+    setDeletingId(batchId);
+    try {
+      await deleteBatch(batchId);
+      setBatches((prev) => prev.filter((b) => b.batch_id !== batchId));
+      toast.success("Batch deleted");
+    } catch {
+      toast.error("Failed to delete batch");
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
+    }
+  };
 
   useEffect(() => {
     if (open) {
@@ -46,7 +62,8 @@ export function PastBatchesDialog({ open, onOpenChange, onOpenBatch }: Props) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Past Batches</DialogTitle>
@@ -96,6 +113,20 @@ export function PastBatchesDialog({ open, onOpenChange, onOpenBatch }: Props) {
                   {batch.fail_count} FAIL / {batch.pass_count} PASS · {batch.total_defects} defects
                 </p>
               </div>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                onClick={() => setConfirmDeleteId(batch.batch_id)}
+                disabled={deletingId === batch.batch_id}
+                title="Delete batch"
+              >
+                {deletingId === batch.batch_id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+              </Button>
               <Button size="sm" variant="outline" onClick={() => onOpenBatch(batch)}>
                 Open
               </Button>
@@ -104,5 +135,14 @@ export function PastBatchesDialog({ open, onOpenChange, onOpenBatch }: Props) {
         </div>
       </DialogContent>
     </Dialog>
+    <ConfirmDialog
+      open={confirmDeleteId !== null}
+      onOpenChange={(open) => !open && setConfirmDeleteId(null)}
+      title="Delete batch?"
+      description="This will remove the batch from your history. The underlying inspection images will not be deleted."
+      confirmLabel="Delete"
+      onConfirm={() => confirmDeleteId && handleDeleteBatch(confirmDeleteId)}
+    />
+    </>
   );
 }

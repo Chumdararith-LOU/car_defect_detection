@@ -1,5 +1,36 @@
 [
   {
+    "batch_id": "BATCH_20260819164419",
+    "name": "Aug 19, 16:44 \u00b7 3 images",
+    "created_at": "2026-08-19T16:44:19.167492",
+    "count": 3,
+    "fail_count": 3,
+    "pass_count": 0,
+    "total_defects": 13,
+    "settings": {},
+    "inspection_ids": [
+      "INSP_20260819164416",
+      "INSP_20260819164417",
+      "INSP_20260819164418"
+    ]
+  },
+  {
+    "batch_id": "BATCH_20260819164334",
+    "name": "Aug 19, 16:43 \u00b7 4 images",
+    "created_at": "2026-08-19T16:43:34.054805",
+    "count": 4,
+    "fail_count": 4,
+    "pass_count": 0,
+    "total_defects": 10,
+    "settings": {},
+    "inspection_ids": [
+      "INSP_20260819164327",
+      "INSP_20260819164331",
+      "INSP_20260819164332",
+      "INSP_20260819164333"
+    ]
+  },
+  {
     "batch_id": "BATCH_20260819160629",
     "name": "Aug 19, 16:06 \u00b7 19 images",
     "created_at": "2026-08-19T16:06:29.127990",

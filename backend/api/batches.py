@@ -49,3 +49,12 @@ def api_rename_batch(batch_id: str, body: BatchRenameRequest):
         return registry.rename_batch(batch_id, body.name)
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
+
+
+@router.delete("/batches/{batch_id}")
+def api_delete_batch(batch_id: str):
+    try:
+        registry.delete_batch(batch_id)
+        return {"success": True, "message": f"Batch '{batch_id}' deleted"}
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))

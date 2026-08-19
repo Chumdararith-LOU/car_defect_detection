@@ -411,6 +411,16 @@ export async function createBatch(
   return res.json();
 }
 
+export async function deleteBatch(batchId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/batches/${batchId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Failed to delete batch: ${res.statusText}`);
+  }
+}
+
 export async function renameBatch(batchId: string, name: string): Promise<BatchSummary> {
   const res = await fetch(`${API_BASE}/api/batches/${batchId}`, {
     method: "PATCH",

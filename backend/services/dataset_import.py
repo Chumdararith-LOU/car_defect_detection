@@ -338,6 +338,12 @@ def import_zip_to_dataset(
                 continue
 
             filename = Path(info.filename).name
+
+            # Skip macOS resource forks and metadata directories
+            if "__MACOSX" in info.filename or filename.startswith("._"):
+                stats["skipped"] += 1
+                continue
+
             ext = Path(filename).suffix.lower()
 
             if ext in IMAGE_EXTENSIONS:

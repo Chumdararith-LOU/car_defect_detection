@@ -97,6 +97,16 @@ def get_batch(batch_id: str) -> dict | None:
     return None
 
 
+def delete_batch(batch_id: str) -> None:
+    """Delete a batch from the registry."""
+    with _lock:
+        batches = _load()
+        new_batches = [b for b in batches if b.get("batch_id") != batch_id]
+        if len(new_batches) == len(batches):
+            raise ValueError(f"Batch '{batch_id}' not found")
+        _save(new_batches)
+
+
 def rename_batch(batch_id: str, new_name: str) -> dict:
     new_name = (new_name or "").strip()
     if not new_name:
