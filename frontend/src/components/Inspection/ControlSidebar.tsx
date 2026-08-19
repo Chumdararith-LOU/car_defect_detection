@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { Upload, Play, RefreshCw, Download, ShieldCheck } from "lucide-react";
+import { toast } from "sonner";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -17,6 +19,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import {
   fetchModels,
   fetchSystemDevices,
+  runInspection,
   type Stage2Mode,
   type Stage2Preset,
   type SystemDevices,
@@ -64,6 +67,9 @@ interface Props {
   enableStage2: boolean;
   enableStage3: boolean;
   onStageToggles: (patch: StageToggles) => void;
+  pendingFiles: File[] | null;
+  onSetPendingFiles: (files: File[]) => void;
+  onRunBatch: (items: any[], totalMs: number) => void;
 }
 
 export function ControlSidebar({
@@ -82,6 +88,9 @@ export function ControlSidebar({
   enableStage2,
   enableStage3,
   onStageToggles,
+  pendingFiles,
+  onSetPendingFiles,
+  onRunBatch,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [models, setModels] = useState<string[]>([]);
@@ -121,14 +130,105 @@ export function ControlSidebar({
       .catch((err) => console.error("Failed to fetch devices:", err));
   }, []);
 
-  const handleFile = (e: ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (f) onImage(f);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(
+    null,
+  );
+
+  const generateThumbnail = async (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let w = img.width,
+          h = img.height;
+        if (w > h) {
+          h = (h / w) * 160;
+          w = 160;
+        } else {
+          w = (w / h) * 120;
+          h = 120;
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(img.src);
+        resolve(canvas.toDataURL("image/jpeg", 0.7));
+      };
+      img.src = URL.createObjectURL(file);
+    });
   };
+
+  const runBatch = async () => {
+    if (!pendingFiles) return;
+    setBatchProgress({ current: 0, total: pendingFiles.length });
+    const items: any[] = [];
+    const t_batch_start = performance.now();
+    for (const file of pendingFiles) {
+      try {
+        const payload = await runInspection({
+          file,
+          modelName: selectedModel,
+          stage2ModelName: selectedStage2Model || undefined,
+          stage2Mode,
+          stage2Preset: stage2Mode === "sahi" ? stage2Preset : undefined,
+          stage2Conf: stage2Mode === "direct" ? stage2Conf : undefined,
+          device,
+          enableStage1,
+          enableStage2,
+          enableStage3,
+        });
+        const thumbnail = await generateThumbnail(file);
+        items.push({
+          file,
+          objectUrl: URL.createObjectURL(file),
+          thumbnail,
+          payload,
+        });
+      } catch (err) {
+        console.error(`Failed to inspect ${file.name}:`, err);
+      }
+      setBatchProgress((prev) => (prev ? { ...prev, current: prev.current + 1 } : null));
+    }
+
+    const totalMs = performance.now() - t_batch_start;
+    setBatchProgress(null);
+
+    if (items.length > 0) {
+      onRunBatch(items, totalMs);
+      toast.success(`Batch complete! ${items.length} images processed.`);
+    } else {
+      toast.error("Batch failed. No images processed.");
+    }
+  };
+
+  const handleFile = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    if (files.length === 1) {
+      onImage(files[0]);
+      toast.info(`Image loaded. Configure settings and click "Run Inspection".`);
+    } else if (files.length > 1) {
+      onSetPendingFiles(files);
+      toast.info(`${files.length} images queued. Configure settings and click "Run Batch".`);
+    }
+
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
   const handleDrop = (e: DragEvent) => {
     e.preventDefault();
-    const f = e.dataTransfer.files?.[0];
-    if (f && f.type.startsWith("image/")) onImage(f);
+    const files = Array.from(e.dataTransfer.files || []).filter((f) => f.type.startsWith("image/"));
+    if (files.length === 0) return;
+
+    if (files.length === 1) {
+      onImage(files[0]);
+      toast.info(`Image loaded. Configure settings and click "Run Inspection".`);
+    } else if (files.length > 1) {
+      onSetPendingFiles(files);
+      toast.info(`${files.length} images queued. Configure settings and click "Run Batch".`);
+    }
   };
 
   const togglePanel = (id: PanelId) => {
@@ -157,7 +257,7 @@ export function ControlSidebar({
     URL.revokeObjectURL(url);
   };
 
-  const running = stage !== "idle" && stage !== "done";
+  const running = (stage !== "idle" && stage !== "done") || batchProgress !== null;
   const allStagesOff = !enableStage1 && !enableStage2 && !enableStage3;
   const disabledStages = payload?.disabled_stages ?? [
     ...(enableStage1 ? [] : ["stage1"]),
@@ -192,10 +292,23 @@ export function ControlSidebar({
           ref={inputRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
           onChange={handleFile}
         />
-        {imageName && <p className="mt-2 truncate text-[11px] text-foreground/70">{imageName}</p>}
+        {batchProgress ? (
+          <div className="mt-3 space-y-1">
+            <p className="text-[11px] font-medium text-foreground">
+              Processing {batchProgress.current} / {batchProgress.total}...
+            </p>
+            <Progress
+              value={(batchProgress.current / batchProgress.total) * 100}
+              className="h-1.5"
+            />
+          </div>
+        ) : (
+          imageName && <p className="mt-2 truncate text-[11px] text-foreground/70">{imageName}</p>
+        )}
       </div>
       <div className="space-y-1.5">
         <p className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -435,25 +548,51 @@ export function ControlSidebar({
       </div>
 
       <div className="space-y-2">
-        <Button
-          className="w-full rounded-sm uppercase tracking-wide"
-          onClick={() =>
-            onRun({
-              modelName: selectedModel,
-              stage2ModelName: selectedStage2Model || undefined,
-              stage2Mode,
-              stage2Preset: stage2Mode === "sahi" ? stage2Preset : undefined,
-              stage2Conf: stage2Mode === "direct" ? stage2Conf : undefined,
-              device,
-            })
-          }
-          disabled={running || allStagesOff}
-        >
-          <Play className="mr-2 h-4 w-4" />
-          Run Inspection
-        </Button>
+        {pendingFiles ? (
+          <>
+            <Button
+              className="w-full rounded-sm uppercase tracking-wide bg-primary"
+              onClick={runBatch}
+              disabled={running || allStagesOff}
+            >
+              <Play className="mr-2 h-4 w-4" />
+              Run Batch ({pendingFiles.length} images)
+            </Button>
+            <p className="text-[10px] text-center text-muted-foreground">
+              ↑ Click to start batch processing
+            </p>
+          </>
+        ) : (
+          <>
+            <Button
+              className="w-full rounded-sm uppercase tracking-wide"
+              onClick={() =>
+                onRun({
+                  modelName: selectedModel,
+                  stage2ModelName: selectedStage2Model || undefined,
+                  stage2Mode,
+                  stage2Preset: stage2Mode === "sahi" ? stage2Preset : undefined,
+                  stage2Conf: stage2Mode === "direct" ? stage2Conf : undefined,
+                  device,
+                })
+              }
+              disabled={running || allStagesOff || !imageName}
+            >
+              <Play className="mr-2 h-4 w-4" />
+              Run Inspection
+            </Button>
+            {!imageName && (
+              <p className="text-[10px] text-center text-muted-foreground">Upload an image first</p>
+            )}
+            {imageName && !allStagesOff && (
+              <p className="text-[10px] text-center text-muted-foreground">
+                ↑ Click to start inspection
+              </p>
+            )}
+          </>
+        )}
         {allStagesOff && (
-          <p className="text-[10px] text-muted-foreground">Enable at least one stage</p>
+          <p className="text-[10px] text-center text-muted-foreground">Enable at least one stage</p>
         )}
         <div className="grid grid-cols-2 gap-2">
           <Button

@@ -6,6 +6,21 @@ import type {
   PipelineStage,
   ViewStage,
 } from "@/lib/inspection/schema";
+
+export interface BatchItem {
+  inspectionId: string;
+  filename: string;
+  thumbnail: string;
+  fullUrl?: string;
+  payload: InspectionPayload;
+}
+
+export interface BatchState {
+  items: BatchItem[];
+  selectedIndex: number | null;
+  totalMs: number;
+  deviceUsed: string;
+}
 import { runInspection } from "@/lib/inspection/apiClient";
 
 function base64ToFile(base64: string, filename: string): File | null {
@@ -42,7 +57,7 @@ export interface StageToggles {
 interface State {
   imageUrl: string | null;
   imageName: string | null;
-  imageFile: File | null; // Not persisted, only used for the current session's API call
+  imageFile: File | null;
   stage: PipelineStage;
   message: string;
   payload: InspectionPayload | null;
@@ -51,6 +66,8 @@ interface State {
   enableStage1: boolean;
   enableStage2: boolean;
   enableStage3: boolean;
+  batch: BatchState | null;
+  pendingFiles: File[] | null; // Files waiting to be processed
 }
 
 type Action =
@@ -61,7 +78,10 @@ type Action =
   | { type: "filters"; patch: Partial<Filters> }
   | { type: "view_stage"; viewStage: ViewStage }
   | { type: "stage_toggles"; patch: StageToggles }
-  | { type: "hydrate"; state: Partial<State> };
+  | { type: "hydrate"; state: Partial<State> }
+  | { type: "set_pending_files"; files: File[] }
+  | { type: "set_batch"; batch: BatchState }
+  | { type: "select_batch_item"; index: number | null };
 
 const STORAGE_KEY = "car_defect_inspection_state";
 
@@ -84,6 +104,8 @@ const initial: State = {
   enableStage1: true,
   enableStage2: true,
   enableStage3: true,
+  batch: null,
+  pendingFiles: null,
 };
 
 // Helper to serialize state for localStorage (excludes File object and non-serializable Sets)
@@ -104,6 +126,13 @@ function serializeState(state: State) {
       minConfidence: state.filters.minConfidence,
       minDsi: state.filters.minDsi,
     },
+    // Persist batch with small thumbnails only (strip session-only fullUrl)
+    batch: state.batch
+      ? {
+          ...state.batch,
+          items: state.batch.items.map(({ fullUrl, ...rest }) => rest),
+        }
+      : null,
   };
 }
 
@@ -132,6 +161,53 @@ function reducer(state: State, action: Action): State {
       return { ...state, viewStage: action.viewStage };
     case "stage_toggles":
       return { ...state, ...action.patch };
+    case "set_pending_files":
+      return {
+        ...state,
+        pendingFiles: action.files,
+        batch: null,
+        stage: "idle",
+        message: `${action.files.length} images queued. Configure settings and click "Run Batch".`,
+      };
+    case "set_batch": {
+      return {
+        ...state,
+        batch: action.batch,
+        pendingFiles: null,
+        // Don't set imageUrl/imageName/payload — keep batch in "grid view"
+        imageUrl: null,
+        imageName: null,
+        payload: null,
+        stage: "done",
+        message: `Batch complete. ${action.batch.items.length} images processed. Click a thumbnail to inspect.`,
+      };
+    }
+    case "select_batch_item": {
+      if (!state.batch) return state;
+      if (action.index === null) {
+        // Back to batch grid view — MUST reset selectedIndex or the grid never renders
+        return {
+          ...state,
+          batch: { ...state.batch, selectedIndex: null },
+          imageUrl: null,
+          imageName: null,
+          imageFile: null,
+          payload: null,
+          stage: "done",
+          message: `Batch view — ${state.batch.items.length} images. Click a thumbnail to inspect.`,
+        };
+      }
+      const item = state.batch.items[action.index];
+      return {
+        ...state,
+        batch: { ...state.batch, selectedIndex: action.index },
+        imageUrl: item.fullUrl ?? item.thumbnail,
+        imageName: item.filename,
+        payload: item.payload,
+        stage: "done",
+        message: `Viewing ${action.index + 1} of ${state.batch.items.length}`,
+      };
+    }
     case "hydrate":
       return { ...state, ...action.state };
   }
@@ -161,16 +237,20 @@ export function useInspection(defaults: { imageUrl: string; imageName: string })
           parsed.imageUrl && parsed.imageName
             ? base64ToFile(parsed.imageUrl, parsed.imageName)
             : null;
-
+        // Restored batches always open in grid view (object URLs are dead after refresh)
+        const hydratedBatch = parsed.batch ? { ...parsed.batch, selectedIndex: null } : null;
         dispatch({
           type: "hydrate",
           state: {
-            imageUrl: parsed.imageUrl,
-            imageName: parsed.imageName,
-            imageFile: hydratedFile,
+            imageUrl: hydratedBatch ? null : parsed.imageUrl,
+            imageName: hydratedBatch ? null : parsed.imageName,
+            imageFile: hydratedBatch ? null : hydratedFile,
             stage: parsed.stage || "idle",
-            message: parsed.message || "Restored from previous session.",
-            payload: parsed.payload,
+            message: hydratedBatch
+              ? `Batch restored: ${hydratedBatch.items.length} images.`
+              : parsed.message || "Restored from previous session.",
+            payload: hydratedBatch ? null : parsed.payload,
+            batch: hydratedBatch,
             viewStage: parsed.viewStage || 2,
             enableStage1: parsed.enableStage1 ?? true,
             enableStage2: parsed.enableStage2 ?? true,
@@ -186,7 +266,7 @@ export function useInspection(defaults: { imageUrl: string; imageName: string })
 
   useEffect(() => {
     try {
-      if (state.imageUrl === defaults.imageUrl && !state.payload) return;
+      if (state.imageUrl === defaults.imageUrl && !state.payload && !state.batch) return;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeState(state)));
     } catch (e) {
       if (e instanceof DOMException && e.name === "QuotaExceededError") {
@@ -194,6 +274,7 @@ export function useInspection(defaults: { imageUrl: string; imageName: string })
         const stateWithoutImage = serializeState(state);
         stateWithoutImage.imageUrl = null;
         stateWithoutImage.imageName = null;
+        stateWithoutImage.batch = null;
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(stateWithoutImage));
         } catch (e2) {
@@ -304,6 +385,18 @@ export function useInspection(defaults: { imageUrl: string; imageName: string })
     });
   }, [state.payload, state.filters]);
 
+  const setPendingFiles = useCallback((files: File[]) => {
+    dispatch({ type: "set_pending_files", files });
+  }, []);
+
+  const setBatch = useCallback((batch: BatchState) => {
+    dispatch({ type: "set_batch", batch });
+  }, []);
+
+  const selectBatchItem = useCallback((index: number | null) => {
+    dispatch({ type: "select_batch_item", index });
+  }, []);
+
   return {
     state,
     filteredDefects,
@@ -313,5 +406,8 @@ export function useInspection(defaults: { imageUrl: string; imageName: string })
     setFilters,
     setViewStage,
     setStageToggles,
+    setPendingFiles,
+    setBatch,
+    selectBatchItem,
   };
 }

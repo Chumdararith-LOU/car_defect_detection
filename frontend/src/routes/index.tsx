@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import demoVehicle from "@/assets/demo-vehicle.jpg";
-import { useInspection } from "@/hooks/useInspection";
+import { useInspection, type BatchItem } from "@/hooks/useInspection";
 import { ControlSidebar } from "@/components/Inspection/ControlSidebar";
 import { InspectionCanvas } from "@/components/Inspection/InspectionCanvas";
 import { DefectGallery } from "@/components/Inspection/gallery";
 import { SummaryCard } from "@/components/Inspection/SummaryCard";
-import { Activity } from "lucide-react";
+import { BatchThumbnailGrid } from "@/components/Inspection/BatchThumbnailGrid";
+import { Button } from "@/components/ui/button";
+import { Activity, Zap, ArrowLeft } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -41,7 +43,26 @@ function InspectionDashboard() {
     setFilters,
     setViewStage,
     setStageToggles,
+    setPendingFiles,
+    setBatch,
+    selectBatchItem,
   } = useInspection({ imageUrl: demoVehicle, imageName: "demo-vehicle.jpg" });
+
+  const handleRunBatch = (items: any[], totalMs: number) => {
+    const batchItems: BatchItem[] = items.map((item) => ({
+      inspectionId: item.payload?.inspection_id ?? "",
+      filename: item.file?.name ?? "unknown",
+      thumbnail: item.thumbnail as string,
+      fullUrl: item.objectUrl as string | undefined,
+      payload: item.payload,
+    }));
+    setBatch({
+      items: batchItems,
+      selectedIndex: null,
+      totalMs,
+      deviceUsed: items[0]?.payload?.device_used ?? "auto",
+    });
+  };
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   const onImage = useCallback(
@@ -103,10 +124,14 @@ function InspectionDashboard() {
           enableStage2={state.enableStage2}
           enableStage3={state.enableStage3}
           onStageToggles={setStageToggles}
+          pendingFiles={state.pendingFiles}
+          onSetPendingFiles={setPendingFiles}
+          onRunBatch={handleRunBatch}
         />
 
         <main className="flex min-h-[500px] flex-col overflow-hidden border-border xl:border-x">
-          {state.imageUrl && (
+          {/* Only show canvas when viewing a specific image (not in batch grid mode) */}
+          {state.imageUrl && !(state.batch && state.batch.selectedIndex === null) && (
             <InspectionCanvas
               imageUrl={state.imageUrl}
               payload={state.payload}
@@ -116,48 +141,100 @@ function InspectionDashboard() {
               viewStage={state.viewStage}
             />
           )}
+          {/* Batch grid placeholder when in batch mode */}
+          {state.batch && state.batch.selectedIndex === null && (
+            <div className="flex flex-1 items-center justify-center bg-muted/20">
+              <div className="text-center">
+                <p className="font-mono text-sm text-muted-foreground">Batch mode active</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Select a thumbnail to inspect individual results
+                </p>
+              </div>
+            </div>
+          )}
         </main>
-
         <section className="flex min-h-[400px] flex-col overflow-hidden bg-sidebar/40">
           <div className="border-b border-border p-4">
             <p className="font-mono text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
               Zone C · Diagnostics
             </p>
             <h2 className="mt-0.5 text-sm font-semibold uppercase tracking-wide">
-              Defect gallery & report
+              {state.batch && state.batch.selectedIndex === null
+                ? "Batch results"
+                : "Defect gallery & report"}
             </h2>
+            {/* Show telemetry only when viewing a specific image */}
+            {state.payload?.inference_ms &&
+              !(state.batch && state.batch.selectedIndex === null) && (
+                <div className="mt-2 flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
+                  <Zap className="h-3 w-3 text-amber-400" />
+                  <span>{state.payload.inference_ms.toFixed(0)}ms</span>
+                  <span>·</span>
+                  <span>{state.payload.device_used}</span>
+                </div>
+              )}
           </div>
-          <div className="p-4 pb-0">
-            <SummaryCard
-              payload={state.payload}
-              filteredCount={filteredDefects.length}
-              disabledStages={
-                state.payload?.disabled_stages ?? [
-                  ...(state.enableStage1 ? [] : ["stage1"]),
-                  ...(state.enableStage2 ? [] : ["stage2"]),
-                  ...(state.enableStage3 ? [] : ["stage3"]),
-                ]
-              }
+
+          {/* Back button — Zone C, when viewing one image from the batch */}
+          {state.batch && state.batch.selectedIndex !== null && (
+            <div className="border-b border-border p-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => selectBatchItem(null)}
+                className="w-full"
+              >
+                <ArrowLeft className="mr-2 h-3 w-3" />
+                Back to Batch Grid ({state.batch.items.length} images)
+              </Button>
+            </div>
+          )}
+
+          {/* Batch thumbnail grid — ONLY when in batch grid mode */}
+          {state.batch && state.batch.selectedIndex === null && (
+            <BatchThumbnailGrid
+              batch={state.batch}
+              onBack={() => selectBatchItem(null)}
+              onSelect={selectBatchItem}
             />
-          </div>
-          <div className="min-h-0 flex-1">
-            <DefectGallery
-              defects={filteredDefects}
-              imageUrl={state.imageUrl ?? demoVehicle}
-              inspectionId={state.payload?.inspection_id ?? null}
-              hoveredId={hoveredId}
-              unclassified_anomalies={state.payload?.unclassified_anomalies}
-              suppressed_detections={state.payload?.suppressed_detections}
-              onHover={setHoveredId}
-              empty={
-                state.payload?.inspection_status === "PASS"
-                  ? "Pre-screen returned PASS. No heavy processing triggered."
-                  : state.payload
-                    ? "No defects match the current filters."
-                    : "Run an inspection to populate the gallery."
-              }
-            />
-          </div>
+          )}
+
+          {/* Summary + Gallery — ONLY when viewing a specific image */}
+          {!(state.batch && state.batch.selectedIndex === null) && (
+            <>
+              <div className="p-4 pb-0">
+                <SummaryCard
+                  payload={state.payload}
+                  filteredCount={filteredDefects.length}
+                  disabledStages={
+                    state.payload?.disabled_stages ?? [
+                      ...(state.enableStage1 ? [] : ["stage1"]),
+                      ...(state.enableStage2 ? [] : ["stage2"]),
+                      ...(state.enableStage3 ? [] : ["stage3"]),
+                    ]
+                  }
+                />
+              </div>
+              <div className="min-h-0 flex-1">
+                <DefectGallery
+                  defects={filteredDefects}
+                  imageUrl={state.imageUrl ?? demoVehicle}
+                  inspectionId={state.payload?.inspection_id ?? null}
+                  hoveredId={hoveredId}
+                  unclassified_anomalies={state.payload?.unclassified_anomalies}
+                  suppressed_detections={state.payload?.suppressed_detections}
+                  onHover={setHoveredId}
+                  empty={
+                    state.payload?.inspection_status === "PASS"
+                      ? "Pre-screen returned PASS. No heavy processing triggered."
+                      : state.payload
+                        ? "No defects match the current filters."
+                        : "Run an inspection to populate the gallery."
+                  }
+                />
+              </div>
+            </>
+          )}
         </section>
       </div>
     </div>

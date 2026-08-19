@@ -1,4 +1,5 @@
 import logging
+import time
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
@@ -7,8 +8,24 @@ from services import process_uploaded_image, run_inspection
 from services.inspection_store import save_inspection
 
 logger = logging.getLogger("InspectAPI")
-
 router = APIRouter(prefix="/api", tags=["inspect"])
+
+
+def _resolve_device(requested: str) -> str:
+    """Resolve 'auto' to the actual device that will be used."""
+    if requested and requested != "auto":
+        return requested
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return "cuda"
+        mps = getattr(torch.backends, "mps", None)
+        if mps is not None and mps.is_available():
+            return "mps"
+    except Exception:
+        pass
+    return "cpu"
 
 
 @router.post("/inspect", status_code=status.HTTP_200_OK)
@@ -76,6 +93,7 @@ async def inspect_vehicle(
                 stage2_model_name, stage="stage2"
             )
 
+        t0 = time.time()
         response_data = run_inspection(
             img_np,
             stage1_model=stage1_model,
@@ -90,16 +108,20 @@ async def inspect_vehicle(
             enable_stage3=enable_stage3,
         )
 
+        inference_ms = round((time.time() - t0) * 1000, 2)
+        resolved_device = _resolve_device(device)
         inspection_id = getattr(response_data, "inspection_id", "")
+        if hasattr(response_data, "model_dump"):
+            payload_dict = response_data.model_dump(by_alias=True)
+        elif hasattr(response_data, "dict"):
+            payload_dict = response_data.dict(by_alias=True)
+        else:
+            payload_dict = dict(response_data)
+        # Inject performance stats so the LIVE UI receives them too
+        payload_dict["inference_ms"] = inference_ms
+        payload_dict["device_used"] = resolved_device
         if inspection_id:
             try:
-                if hasattr(response_data, "model_dump"):
-                    payload_dict = response_data.model_dump()
-                elif hasattr(response_data, "dict"):
-                    payload_dict = response_data.dict()
-                else:
-                    payload_dict = dict(response_data)
-
                 save_inspection(
                     inspection_id=inspection_id,
                     image_bytes=contents,
@@ -110,8 +132,7 @@ async def inspect_vehicle(
                 logger.warning(
                     f"Failed to persist inspection {inspection_id}: {save_err}"
                 )
-
-        return response_data
+        return payload_dict
 
     except Exception as e:
         logger.exception("An error occurred during inspection")

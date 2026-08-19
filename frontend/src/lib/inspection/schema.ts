@@ -112,6 +112,8 @@ export interface InspectionPayload {
   suppressed_detections?: SuppressedDetection[];
   stage1_blobs?: Stage1Blob[];
   disabled_stages?: string[];
+  inference_ms?: number;
+  device_used?: string;
 }
 
 export interface ReviewItem {
