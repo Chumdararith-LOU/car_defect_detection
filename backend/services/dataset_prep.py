@@ -343,21 +343,35 @@ def resplit_dataset(
 
     has_masks = any(kind == "masks" for _, _, kind in pairs)
 
-    # 3. Shuffle and split
     random.seed(seed)
     random.shuffle(pairs)
-
     total = len(pairs)
-    train_end = int(total * train_ratio)
-    val_end = train_end + int(total * val_ratio)
-
+    train_n = int(round(total * train_ratio))
+    val_n = int(round(total * val_ratio))
+    test_n = total - train_n - val_n
+    if test_ratio <= 1e-9:
+        val_n += test_n
+        test_n = 0
+    if total >= 2:
+        if val_ratio > 1e-9 and val_n == 0:
+            val_n = 1
+            train_n -= 1
+        if test_ratio > 1e-9 and test_n == 0:
+            test_n = 1
+            if val_n > 1:
+                val_n -= 1
+            else:
+                train_n -= 1
+    if train_n < 0:
+        train_n = 0
+    train_end = train_n
+    val_end = train_n + val_n
     splits_map = {
         "train": pairs[:train_end],
         "val": pairs[train_end:val_end],
         "test": pairs[val_end:],
     }
 
-    # 4. Move files to new structure via temp staging
     temp_dir = root / "_temp_resplit"
     temp_dir.mkdir(exist_ok=True)
 
@@ -366,7 +380,9 @@ def resplit_dataset(
             shutil.move(str(img_path), str(temp_dir / f"{split_name}_{img_path.name}"))
             shutil.move(str(ann_path), str(temp_dir / f"{split_name}_{ann_path.name}"))
 
-    for split in ("train", "val", "test"):
+    for split, count in (("train", train_n), ("val", val_n), ("test", test_n)):
+        if count <= 0:
+            continue
         (root / "images" / split).mkdir(parents=True, exist_ok=True)
         (root / "labels" / split).mkdir(parents=True, exist_ok=True)
         if has_masks:
@@ -409,10 +425,11 @@ def resplit_dataset(
         "path": str(root.resolve()),
         "train": "images/train",
         "val": "images/val",
-        "test": "images/test",
         "nc": nc,
         "names": names,
     }
+    if test_n > 0:
+        yaml_content["test"] = "images/test"
     if has_masks:
         yaml_content["masks_dir"] = "masks"
 

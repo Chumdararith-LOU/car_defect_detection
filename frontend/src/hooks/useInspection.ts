@@ -126,7 +126,6 @@ function serializeState(state: State) {
       minConfidence: state.filters.minConfidence,
       minDsi: state.filters.minDsi,
     },
-    // Persist batch with small thumbnails only (strip session-only fullUrl)
     batch: state.batch
       ? {
           ...state.batch,
