@@ -23,6 +23,20 @@ def api_list_inspections(limit: int = Query(50, ge=1, le=200)):
     return {"inspections": inspections, "total": len(inspections)}
 
 
+@router.delete("/api/import/inspections/{inspection_id}", status_code=204)
+def api_delete_inspection(inspection_id: str):
+    """Delete a saved inspection from disk."""
+    try:
+        from services.dataset_import import delete_saved_inspection
+
+        delete_saved_inspection(inspection_id)
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        logger.exception("Delete inspection failed")
+        raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")
+
+
 class InspectionImportRequest(BaseModel):
     inspection_id: str
     split: str = "train"

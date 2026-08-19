@@ -75,9 +75,18 @@ def list_available_inspections(limit: int = 50) -> list[dict]:
     return inspections
 
 
-# ---------------------------------------------------------------------------
-# Import from saved inspection
-# ---------------------------------------------------------------------------
+def delete_saved_inspection(inspection_id: str) -> None:
+    """Delete a saved inspection directory from disk."""
+    # Sanitize input to prevent path traversal
+    if "/" in inspection_id or "\\" in inspection_id or ".." in inspection_id:
+        raise ValueError(f"Invalid inspection ID: '{inspection_id}'")
+
+    target = INSPECTIONS_DIR / inspection_id
+    if not target.is_dir():
+        raise ValueError(f"Inspection '{inspection_id}' not found")
+
+    shutil.rmtree(target)
+    logger.info(f"Deleted saved inspection: {inspection_id}")
 
 
 def import_inspection_to_dataset(

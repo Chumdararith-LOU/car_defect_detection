@@ -368,6 +368,16 @@ export async function fetchAvailableInspections(limit = 50): Promise<InspectionL
   return res.json();
 }
 
+export async function deleteInspection(inspectionId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/import/inspections/${inspectionId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "Failed to delete inspection");
+  }
+}
+
 export async function importInspectionToDataset(
   datasetId: string,
   inspectionId: string,
