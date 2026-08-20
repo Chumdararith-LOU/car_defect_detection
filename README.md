@@ -23,14 +23,17 @@ conda activate car_defect
 ### 2. Install Dependencies
 
 ```bash
-# Ubuntu + NVIDIA GPU: install the CUDA build of torch/torchvision
-# matching your NVIDIA driver before installing requirements.
+# Ubuntu + NVIDIA GPU: You MUST install the CUDA build of PyTorch FIRST.
+# (The default pip version is CPU-only and will result in 'no_gpu' warnings).
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+
+# Then install the rest of the dependencies
 pip install -r requirements.txt
 ```
 
 ### 3. Model Weights (~132 MB)
 
-Best weights are tracked with Git LFS. If they were not downloaded automatically:
+Champion weights are tracked with Git LFS. If they were not downloaded automatically:
 
 ```bash
 git lfs install
