@@ -1,2 +1,10 @@
-*.pt filter=lfs diff=lfs merge=lfs -text
-*.onnx filter=lfs diff=lfs merge=lfs -text
+# Enforce LF line endings for all text files to prevent cross-platform CRLF bugs
+* text=auto eol=lf
+
+# Explicitly mark binary files so Git doesn't try to normalize them
+*.pt binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.onnx binary
+*.zip binary
