@@ -101,3 +101,6 @@ frontend/.vite/
 frontend/.env.local
 frontend/.env.*.local
 frontend/bun.lock
+backend/models/base/*.pt
+opencode.json
+backend/data/batches.json

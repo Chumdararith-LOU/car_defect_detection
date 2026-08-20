@@ -42,6 +42,7 @@ RESCUE_OVERLAP_THRESHOLD = 0.30
 RESCUE_MIN_AREA_RATIO = 0.0005
 CAR_CONTEXT_CLOSE_DISTANCE = 0.02
 MIN_CAR_CONTEXT_AREA = 0.05
+MIN_PANEL_COUNT = 3
 
 
 def _to_polygon(points):
@@ -141,8 +142,11 @@ def assign_defects_to_panels(defects, panels, iod_threshold=0.1):
             panel_shapes.append((panel.get("label"), shape))
 
     car_context, tire_mask = build_car_context(panel_shapes)
-    low_context = car_context is None or car_context.area < MIN_CAR_CONTEXT_AREA
-
+    low_context = (
+        car_context is None
+        or car_context.area < MIN_CAR_CONTEXT_AREA
+        or len(panel_shapes) < MIN_PANEL_COUNT
+    )
     kept = []
     suppressed = []
     assigned_count = 0
@@ -226,12 +230,14 @@ def assign_defects_to_panels(defects, panels, iod_threshold=0.1):
         kept.append(defect)
 
     logger.info(
-        "Stage 4: Kept %d/%d defects (assigned %d, suppressed %d, low_context=%s)",
+        "Stage 4: Kept %d/%d defects (assigned %d, suppressed %d, low_context=%s, coverage=%.3f, panels=%d)",
         len(kept),
         len(defects),
         assigned_count,
         len(suppressed),
         low_context,
+        float(car_context.area) if car_context is not None else 0.0,
+        len(panel_shapes),
     )
     return kept, suppressed
 
@@ -254,8 +260,11 @@ def rescue_unclassified_anomalies(binary_mask, defects, panels, inspection_id):
         if shape is not None:
             panel_shapes.append((panel.get("label"), shape))
     car_context, tire_mask = build_car_context(panel_shapes)
-    low_context = car_context is None or car_context.area < MIN_CAR_CONTEXT_AREA
-
+    low_context = (
+        car_context is None
+        or car_context.area < MIN_CAR_CONTEXT_AREA
+        or len(panel_shapes) < MIN_PANEL_COUNT
+    )
     defect_shapes = [_to_polygon(_get_field(d, "polygon") or []) for d in defects]
 
     for contour in contours:

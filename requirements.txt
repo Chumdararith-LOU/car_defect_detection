@@ -1,34 +1,32 @@
-# Core ML
-ultralytics>=8.3.0
-torch>=2.4.0
-torchvision>=0.19.0
-opencv-python-headless>=4.10.0
+#  Core ML
+# NOTE: On a CUDA machine, install the CUDA build of torch/torchvision
+# matching your NVIDIA driver BEFORE: pip install -r requirements.txt
+torch==2.13.0
+torchvision==0.28.0
+ultralytics==8.4.91
+sahi==0.12.2
 
-# Experiment Tracking
-mlflow>=2.16.0
-dvc[s3]>=3.50.0
+#  Backend / API
+fastapi==0.139.0
+uvicorn==0.51.0
+pydantic==2.13.4
+python-multipart==0.0.32
+python-dotenv==1.2.2
+SQLAlchemy==2.0.51
 
-# Quantization
-onnx>=1.16.0
-onnxruntime>=1.19.0
+#  Scientific / data
+numpy==2.2.6
+pandas==2.3.3
+opencv-python==5.0.0.93
+Pillow==12.3.0
+PyYAML==6.0.3
+shapely==2.1.2
+requests==2.34.2
+scipy==1.15.3
+matplotlib==3.10.9
+seaborn==0.13.2
+tqdm==4.68.4
+psutil==7.2.2
+scikit-learn==1.7.2
 
-# Inference & Geometry
-sahi
-shapely
-
-# Utilities
-pyyaml>=6.0
-python-dotenv>=1.0
-numpy>=1.26.0
-pandas>=2.2.0
-matplotlib>=3.9.0
-seaborn>=0.13.0
-tqdm>=4.66.0
-
-# Backend API (Phase 5)
-fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
-pydantic>=2.9.0
-pydantic-settings>=2.5.0
-psutil>=6.0.0
-python-multipart>=0.0.9
+mlflow==3.14.0

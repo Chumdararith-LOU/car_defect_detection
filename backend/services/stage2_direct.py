@@ -1,5 +1,22 @@
 import cv2
 import numpy as np
+import logging
+
+logger = logging.getLogger("Stage2Direct")
+
+DIRECT_MASK_IOS_THRESHOLD = 0.50
+
+
+def _boxes_overlap(a, b):
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def _polygon_to_bool_mask(polygon_px, img_w, img_h):
+    m = np.zeros((img_h, img_w), dtype=np.uint8)
+    if len(polygon_px) > 2:
+        pts = np.array(polygon_px, dtype=np.float32).astype(np.int32).reshape(-1, 1, 2)
+        cv2.fillPoly(m, [pts], 1)
+    return m.astype(bool)
 
 
 def run_direct_inference(
@@ -24,7 +41,35 @@ def run_direct_inference(
         classes = res.boxes.cls.cpu().numpy().astype(int)
         masks_xy = res.masks.xy
 
-        for i in range(len(boxes)):
+        bool_masks = [
+            _polygon_to_bool_mask(masks_xy[j], img_w, img_h) for j in range(len(boxes))
+        ]
+        areas = [int(m.sum()) for m in bool_masks]
+        order = sorted(range(len(boxes)), key=lambda j: -confs[j])
+        kept_idx = []
+        for j in order:
+            is_duplicate = False
+            for k in kept_idx:
+                if classes[j] != classes[k]:
+                    continue
+                if not _boxes_overlap(boxes[j], boxes[k]):
+                    continue
+                inter = int(np.logical_and(bool_masks[j], bool_masks[k]).sum())
+                smaller = min(areas[j], areas[k])
+                ios = inter / smaller if smaller > 0 else 0.0
+                if ios >= DIRECT_MASK_IOS_THRESHOLD:
+                    is_duplicate = True
+                    break
+            if not is_duplicate:
+                kept_idx.append(j)
+        kept_idx.sort()
+        logger.info(
+            "Stage 2 Direct: kept %d/%d detections after Mask-IOS NMS",
+            len(kept_idx),
+            len(boxes),
+        )
+
+        for seq, i in enumerate(kept_idx):
             conf = float(confs[i])
             cls_id = classes[i]
             cls_name = model.names[cls_id]
@@ -51,7 +96,7 @@ def run_direct_inference(
 
             defects.append(
                 {
-                    "defect_id": f"{inspection_id}_S2_{i:03d}",
+                    "defect_id": f"{inspection_id}_S2_{seq:03d}",
                     "defect_class": cls_name,
                     "confidence": conf,
                     "global_bbox_xyxy": norm_bbox,

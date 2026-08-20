@@ -1,78 +1,111 @@
-# Car Defect Detection Pipeline
+# Car Defect Detection
 
-A multi-stage AI pipeline for automotive exterior defect detection and industrial quality inspection.
+Automated car defect detection pipeline using computer vision and deep learning.
+
+## 🚀 Quickstart (Clone & Run)
+
+### Prerequisites
+
+* Python 3.10 (Conda recommended)
+* Git LFS — champion weights are stored via LFS: `git lfs install` (one-time)
+* Bun (frontend): [bun.sh](https://bun.sh?utm_source=chatgpt.com)
+
+### 1. Clone & Create Environment
+
+```bash
+git clone https://github.com/Chumdararith-LOU/car_defect_detection.git
+cd car_defect_detection
+
+conda create -n car_defect python=3.10
+conda activate car_defect
+```
+
+### 2. Install Dependencies
+
+```bash
+# Ubuntu + NVIDIA GPU: install the CUDA build of torch/torchvision
+# matching your NVIDIA driver before installing requirements.
+pip install -r requirements.txt
+```
+
+### 3. Model Weights (~132 MB)
+
+Best weights are tracked with Git LFS. If they were not downloaded automatically:
+
+```bash
+git lfs install
+git lfs pull
+```
+
+Then verify checksums and create deployment symlinks:
+
+```bash
+python scripts/setup_models.py
+```
+
+### 4. Run the Backend
+
+The backend runs on port `8010`:
+
+```bash
+cd backend
+uvicorn main:app --reload --port 8010
+```
+
+### 5. Run the Frontend
+
+Open a **new terminal**:
+
+```bash
+cd frontend
+bun install
+bun run dev
+```
+
+Open:
+
+```text
+http://localhost:8080
+```
+
+The frontend expects the backend at:
+
+```text
+http://localhost:8010
+```
+
+---
 
 ## Architecture Overview
 
-The system uses a cascaded architecture to balance high recall for micro-defects with precise classification and spatial context:
+The project is organized into separate components for model inference, backend services, frontend development, and supporting scripts.
 
-- **Stage 1 (Binary SOD Pre-Screener):** Class-agnostic anomaly detection using overlapping tiling and Focal Loss to catch hairline scratches and micro-defects.
-- **Stage 2 (7-Class Defect Segmentation):** Instance segmentation (dent, scratch, crack, glass_shatter, broken_lamp, corrosion, disjoint_part) using Resume-and-Adapt transfer learning and SAHI (Slicing Aided Hyper Inference) at 1024px native resolution.
-- **Stage 3 (21-Class Panel Segmenter):** Spatial context mapping to identify vehicle components (Hood, Doors, Bumpers, Wheels, etc.).
-- **Stage 4 (Spatial Fusion & Reporting):** Fuses Stage 2 defects with Stage 3 panels using Intersection-over-Defect (IoD), computes Damage Severity Index (DSI), and generates factory reports.
+### Backend
 
-## Repository Structure
+The backend provides the API and inference services used by the frontend.
+
+### Frontend
+
+The frontend provides the user interface for interacting with the defect detection pipeline.
+
+### Models
+
+Champion model weights are managed through Git LFS and prepared for deployment using:
+
+```bash
+python scripts/setup_models.py
+```
+
+### Development
+
+Development dependencies are listed separately in:
 
 ```text
-car_defect_detection/
-├── src/
-│   ├── stage1/          # Binary SOD pre-screening
-│   ├── stage2/          # 7-class defect segmentation
-│   ├── stage3/          # 21-class panel segmentation
-│   └── stage4/          # Spatial fusion and reporting
-├── configs/
-│   ├── train/           # Training configurations per stage
-│   ├── data/            # Dataset split configurations
-│   └── inference/       # SAHI production inference configs
-├── data/                # Raw and processed datasets (gitignored)
-├── runs/                # Ultralytics training outputs (gitignored)
-├── mlruns/              # MLflow tracking store (gitignored)
-├── tests/               # Pytest test suite
-├── archive/             # Archived legacy experiments and notebooks
-└── docs/                # Architecture and planning documents
+requirements-dev.txt
 ```
 
-## Setup
-
-1. Ensure you have Python 3.10+ installed.
-2. Install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. For development tools (linting, testing):
-   ```bash
-   pip install -r requirements-dev.txt
-   ```
-4. Copy the environment template and configure your local paths:
-   ```bash
-   cp .env.example .env
-   ```
-
-## Infrastructure
-
-The project uses Docker Compose to run local infrastructure:
+Install them with:
 
 ```bash
-docker compose up -d
+pip install -r requirements-dev.txt
 ```
-
-This starts:
-- **MLflow Tracking Server** (port 5001) for experiment logging.
-- **MinIO** (ports 9000/9001) for S3-compatible artifact storage.
-
-## Usage
-
-### Training
-Training is configured via YAML files in `configs/train/`.
-
-Example for Stage 2:
-```bash
-yolo segment train --config configs/train/stage2/model5_stage1_head_warmup_7cls_extended.yaml
-```
-
-### Inference
-Production inference uses SAHI to recover micro-defects. Configuration is in `configs/inference/sahi_production.yaml`.
-
-## Documentation
-
-Detailed architecture, host detection specs, and champion model manifests are located in the `docs/` directory.
