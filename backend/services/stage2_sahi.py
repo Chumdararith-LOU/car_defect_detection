@@ -6,8 +6,12 @@ import yaml
 from sahi import AutoDetectionModel
 from sahi.predict import get_sliced_prediction
 
-# Load config once at module level (backend/configs/sahi_production.yaml)
-CONFIG_PATH = Path(__file__).resolve().parents[1] / "configs" / "sahi_production.yaml"
+CONFIG_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "configs"
+    / "inference"
+    / "sahi_production.yaml"
+)
 with open(CONFIG_PATH) as f:
     SAHI_CFG = yaml.safe_load(f)
 
