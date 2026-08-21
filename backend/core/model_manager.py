@@ -56,13 +56,21 @@ class ModelManager:
         if not os.path.exists(stage_dir):
             return []
 
-        return sorted(
-            f
-            for f in os.listdir(stage_dir)
-            if not f.startswith(".")
-            and f.endswith(".pt")
-            and os.path.isfile(os.path.join(stage_dir, f))
-        )
+        valid_models = []
+        for f in os.listdir(stage_dir):
+            if f.startswith(".") or not f.endswith(".pt"):
+                continue
+
+            full_path = os.path.join(stage_dir, f)
+            if not os.path.isfile(full_path):
+                continue
+
+            if os.path.getsize(full_path) < 1024 * 1024:
+                continue
+
+            valid_models.append(f)
+
+        return sorted(valid_models)
 
     def list_all_models(self):
         return {
