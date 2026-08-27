@@ -43,3 +43,5 @@ Thumbs.db
 logs/
 
 .agents
+opencode.json
+skills-lock.json
