@@ -23,7 +23,12 @@ routing_strategy:
     merge: none
   safety:
     models: [objectness_branch_new, baseline_m5]
-    merge: union
+    merge: per_class
+    class_routing:
+      corrosion: objectness_branch_new
+      disjoint_part: objectness_branch_new
+      glass_shatter: objectness_branch_new
+      # broken_lamp, crack, dent, scratch: undesignated → both models contribute
   max_recall:
     models: [objectness_branch_new, baseline_m5, surgical_early, model_4]
     merge: union
