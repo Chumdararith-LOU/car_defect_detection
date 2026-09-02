@@ -434,17 +434,6 @@ export async function renameBatch(batchId: string, name: string): Promise<BatchS
   return res.json();
 }
 
-export interface BatchSummary {
-  batch_id: string;
-  name: string;
-  created_at: string;
-  count: number;
-  fail_count: number;
-  pass_count: number;
-  total_defects: number;
-  inspection_ids: string[];
-}
-
 export async function fetchAvailableInspections(limit = 50): Promise<InspectionListResponse> {
   const res = await fetch(`${API_BASE}/api/import/inspections?limit=${limit}`);
   if (!res.ok) throw new Error(`Failed to fetch inspections: ${res.statusText}`);

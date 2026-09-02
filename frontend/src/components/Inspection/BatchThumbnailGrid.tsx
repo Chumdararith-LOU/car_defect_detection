@@ -10,20 +10,21 @@ interface Props {
 }
 
 export function BatchThumbnailGrid({ batch, onBack, onSelect }: Props) {
-  const avgMs = batch.totalMs / batch.items.length;
-  const throughput = (batch.items.length / (batch.totalMs / 1000)).toFixed(1);
+  const totalMs = batch.totalMs ?? 0;
+  const avgMs = totalMs > 0 ? `${(totalMs / batch.items.length).toFixed(0)}ms/image` : "—";
+  const throughput = totalMs > 0 ? `${(batch.items.length / (totalMs / 1000)).toFixed(1)} img/s` : "—";
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-4 border-b border-border">
       {/* Stats Header */}
-      {batch.totalMs > 0 ? (
+      {totalMs > 0 ? (
         <div className="mb-3 flex items-center gap-3 font-mono text-[10px] text-muted-foreground">
           <Zap className="h-3 w-3 text-amber-400" />
-          <span>Total: {(batch.totalMs / 1000).toFixed(1)}s</span>
+          <span>Total: {(totalMs / 1000).toFixed(1)}s</span>
           <span>·</span>
-          <span>Avg: {avgMs.toFixed(0)}ms/image</span>
+          <span>Avg: {avgMs}</span>
           <span>·</span>
-          <span>{throughput} img/s</span>
+          <span>{throughput}</span>
           <span>·</span>
           <span>{batch.deviceUsed}</span>
         </div>

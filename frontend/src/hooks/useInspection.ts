@@ -18,7 +18,7 @@ export interface BatchItem {
 export interface BatchState {
   items: BatchItem[];
   selectedIndex: number | null;
-  totalMs: number;
+  totalMs: number | null;
   deviceUsed: string;
 }
 import { runInspection } from "@/lib/inspection/apiClient";

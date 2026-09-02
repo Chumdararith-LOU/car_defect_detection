@@ -97,7 +97,7 @@ function InspectionDashboard() {
       setBatch({
         items,
         selectedIndex: null,
-        totalMs: 0,
+        totalMs: null,
         deviceUsed: items[0].payload?.device_used ?? "saved",
       });
       setShowPastBatches(false);
