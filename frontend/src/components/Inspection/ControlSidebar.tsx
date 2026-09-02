@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
-import { Upload, Play, RefreshCw, Download, ShieldCheck } from "lucide-react";
+import { Upload, Play, RefreshCw, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -53,7 +53,6 @@ interface Props {
   viewStage?: ViewStage;
   onImage: (file: File) => void;
   onRun: (opts?: {
-    forceClean?: boolean;
     modelName?: string;
     stage2ModelName?: string;
     stage2Mode?: "direct" | "sahi";
@@ -622,22 +621,16 @@ export function ControlSidebar({
         {allStagesOff && (
           <p className="text-[10px] text-center text-muted-foreground">Enable at least one stage</p>
         )}
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-sm"
-            onClick={() => onRun({ forceClean: true })}
-            disabled={running}
-          >
-            <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
-            Simulate clean
-          </Button>
-          <Button variant="outline" size="sm" className="rounded-sm" onClick={onReset}>
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-            Reset
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full rounded-sm"
+          onClick={onReset}
+          disabled={running}
+        >
+          <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+          Reset
+        </Button>
       </div>
       <div className="space-y-2">
         <StageStatus stage={stage} disabledStages={disabledStages} />

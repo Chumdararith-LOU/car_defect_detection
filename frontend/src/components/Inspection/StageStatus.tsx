@@ -1,5 +1,5 @@
 import type { PipelineStage } from "@/lib/inspection/schema";
-import { Check, Loader2, Circle, Ban } from "lucide-react";
+import { Check, Loader2, Circle, Ban, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const STAGES: {
@@ -12,7 +12,15 @@ const STAGES: {
   { key: "context", stageId: "stage3", label: "Stage 3 · Component Context Mapping" },
 ];
 
-const order: PipelineStage[] = ["idle", "prescreen", "tiling", "context", "done"];
+const order: PipelineStage[] = [
+  "idle",
+  "processing",
+  "prescreen",
+  "tiling",
+  "context",
+  "done",
+  "error",
+];
 
 export function StageStatus({
   stage,
@@ -22,13 +30,15 @@ export function StageStatus({
   disabledStages?: string[];
 }) {
   const currentIdx = order.indexOf(stage);
+  const isProcessing = stage === "processing";
+  const isError = stage === "error";
   return (
     <ol className="space-y-2">
       {STAGES.map((s) => {
         const disabled = disabledStages?.includes(s.stageId) ?? false;
         const idx = order.indexOf(s.key);
-        const done = !disabled && (currentIdx > idx || stage === "done");
-        const active = !disabled && stage === s.key;
+        const done = !disabled && !isError && (currentIdx > idx || stage === "done");
+        const active = !disabled && (stage === s.key || isProcessing);
         return (
           <li
             key={s.key}
@@ -37,6 +47,7 @@ export function StageStatus({
               active && "border-primary/60 bg-primary/5",
               done && "text-muted-foreground",
               disabled && "border-border/40 text-muted-foreground/60",
+              isError && !disabled && "border-status-fail/50",
             )}
           >
             <span className="mt-0.5">
@@ -44,6 +55,8 @@ export function StageStatus({
                 <Ban className="h-3.5 w-3.5 text-muted-foreground/50" />
               ) : done ? (
                 <Check className="h-3.5 w-3.5 text-status-pass" />
+              ) : isError ? (
+                <AlertTriangle className="h-3.5 w-3.5 text-status-fail" />
               ) : active ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
               ) : (

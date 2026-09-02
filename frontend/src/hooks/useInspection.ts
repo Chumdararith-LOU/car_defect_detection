@@ -301,7 +301,6 @@ export function useInspection(defaults: { imageUrl: string; imageName: string })
 
   const run = useCallback(
     async (opts?: {
-      forceClean?: boolean;
       modelName?: string;
       stage2ModelName?: string;
       stage2Mode?: "direct" | "sahi";
