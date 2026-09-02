@@ -110,10 +110,14 @@ function InspectionDashboard() {
 
   const onImage = useCallback(
     (file: File) => {
+      // Revoke previous URL to prevent memory leak
+      if (state.imageUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(state.imageUrl);
+      }
       const url = URL.createObjectURL(file);
       setImage(url, file.name, file);
     },
-    [setImage],
+    [setImage, state.imageUrl],
   );
 
   // Force dark theme for the industrial dashboard look.

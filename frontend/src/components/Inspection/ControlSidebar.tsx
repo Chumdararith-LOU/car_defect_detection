@@ -137,7 +137,7 @@ export function ControlSidebar({
   );
 
   const generateThumbnail = async (file: File): Promise<string> => {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement("canvas");
@@ -156,6 +156,10 @@ export function ControlSidebar({
         ctx?.drawImage(img, 0, 0, w, h);
         URL.revokeObjectURL(img.src);
         resolve(canvas.toDataURL("image/jpeg", 0.7));
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(img.src);
+        reject(new Error(`Failed to load image: ${file.name}`));
       };
       img.src = URL.createObjectURL(file);
     });
@@ -188,7 +192,7 @@ export function ControlSidebar({
           payload,
         });
       } catch (err) {
-        console.error(`Failed to inspect ${file.name}:`, err);
+        console.warn(`Skipping ${file.name}:`, err);
       }
       setBatchProgress((prev) => (prev ? { ...prev, current: prev.current + 1 } : null));
     }
