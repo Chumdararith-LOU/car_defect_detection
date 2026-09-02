@@ -41,6 +41,8 @@ CONTAINMENT_THRESHOLD = 0.50
 RESCUE_OVERLAP_THRESHOLD = 0.30
 RESCUE_MIN_AREA_RATIO = 0.0005
 CAR_CONTEXT_CLOSE_DISTANCE = 0.02
+CAR_CONTEXT_DILATE_DISTANCE = 0.02
+CAR_CONTEXT_PROXIMITY = 0.03
 MIN_CAR_CONTEXT_AREA = 0.05
 MIN_PANEL_COUNT = 3
 
@@ -116,7 +118,7 @@ def build_car_context(panel_polygons):
         return None, None
     union = unary_union(all_polys)
     d = CAR_CONTEXT_CLOSE_DISTANCE
-    car_context = union.buffer(d).buffer(-d)
+    car_context = union.buffer(d).buffer(-d).buffer(CAR_CONTEXT_DILATE_DISTANCE)
     if car_context.is_empty or car_context.area <= 0:
         car_context = None
     tire_polys = [
@@ -211,6 +213,25 @@ def assign_defects_to_panels(defects, panels, iod_threshold=0.1):
                     car_iod = 0.0
 
             if car_iod < CAR_CONTEXT_IOD_THRESHOLD:
+                try:
+                    if bbox and len(bbox) == 4:
+                        probe = shapely_box(
+                            float(bbox[0]),
+                            float(bbox[1]),
+                            float(bbox[2]),
+                            float(bbox[3]),
+                        )
+                    else:
+                        probe = defect_shape
+                    near_car = probe.distance(car_context) <= CAR_CONTEXT_PROXIMITY
+                except Exception:
+                    near_car = False
+                if near_car:
+                    _set_field(defect, "assigned_panel", "Unknown")
+                    _set_field(defect, "containment_ratio_iod", best_iod)
+                    _set_field(defect, "damage_severity_index_dsi", 0.0)
+                    kept.append(defect)
+                    continue
                 suppressed.append(_to_suppressed(defect, "Unknown", "non_car_context"))
                 continue
 
@@ -227,6 +248,19 @@ def assign_defects_to_panels(defects, panels, iod_threshold=0.1):
             _set_field(defect, "damage_severity_index_dsi", 0.0)
         else:
             assigned_count += 1
+            try:
+                assigned_panel_shape = next(
+                    shape
+                    for label, shape in panel_shapes
+                    if LABEL_TO_PANEL_ID.get(label, "Unknown") == panel_id
+                )
+                dsi_ratio = (
+                    defect_shape.intersection(assigned_panel_shape).area
+                    / assigned_panel_shape.area
+                )
+                _set_field(defect, "damage_severity_index_dsi", min(0.99, dsi_ratio))
+            except Exception:
+                _set_field(defect, "damage_severity_index_dsi", 0.0)
         kept.append(defect)
 
     logger.info(
@@ -371,17 +405,33 @@ def rescue_unclassified_anomalies(binary_mask, defects, panels, inspection_id):
                 )
             )
         else:
-            suppressed_blobs.append(
-                SuppressedDetection(
-                    id=blob_id,
-                    predicted_class="anomaly",
-                    confidence=0.85,
-                    bbox=norm_bbox,
-                    polygon=norm_pts,
-                    panel="Unknown",
-                    reason="non_car_context",
+            try:
+                near_car = blob.distance(car_context) <= CAR_CONTEXT_PROXIMITY
+            except Exception:
+                near_car = False
+            if near_car:
+                anomalies.append(
+                    UnclassifiedAnomaly(
+                        id=blob_id,
+                        confidence=0.85,
+                        bbox=norm_bbox,
+                        polygon=norm_pts,
+                        panel="Unknown",
+                        reason="stage1_rescue",
+                    )
                 )
-            )
+            else:
+                suppressed_blobs.append(
+                    SuppressedDetection(
+                        id=blob_id,
+                        predicted_class="anomaly",
+                        confidence=0.85,
+                        bbox=norm_bbox,
+                        polygon=norm_pts,
+                        panel="Unknown",
+                        reason="non_car_context",
+                    )
+                )
 
     logger.info(
         "Stage 4: Rescued %d anomalies, suppressed %d blobs",

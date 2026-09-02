@@ -1,5 +1,7 @@
 import logging
 import time
+
+import cv2
 import numpy as np
 
 from core.config import settings
@@ -13,7 +15,8 @@ def run_prescreen(img_np: np.ndarray, model, device: str = "cpu") -> dict:
     Returns a dictionary with the results needed for the orchestrator.
     """
     start_time = time.time()
-    results = model(img_np, device=device, verbose=False)
+    img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+    results = model(img_bgr, device=device, verbose=False)
     result = results[0]
     latency_ms = (time.time() - start_time) * 1000.0
 

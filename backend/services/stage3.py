@@ -34,8 +34,10 @@ APPROX_EPSILON_RATIO = 0.002
 
 
 def run_panel_inference(model, img_np, device, conf=0.25) -> list:
-    """Runs Stage 3 panel segmentation at 640px (the training resolution)."""
-    results = model(img_np, imgsz=640, conf=conf, device=device, verbose=False)
+    img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+    results = model(
+        img_bgr, imgsz=640, conf=conf, device=device, retina_masks=True, verbose=False
+    )
     res = results[0]
 
     img_h, img_w = img_np.shape[:2]

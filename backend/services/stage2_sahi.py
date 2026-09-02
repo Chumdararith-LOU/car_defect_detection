@@ -15,7 +15,7 @@ CONFIG_PATH = (
 with open(CONFIG_PATH) as f:
     SAHI_CFG = yaml.safe_load(f)
 
-CLASS_NAMES = {
+_DEFAULT_CLASS_NAMES = {
     0: "dent",
     1: "scratch",
     2: "crack",
@@ -24,6 +24,9 @@ CLASS_NAMES = {
     5: "corrosion",
     6: "disjoint_part",
 }
+
+_CACHED_SAHI_MODEL = None
+_CACHED_MODEL_PATH = None
 
 
 def mask_ios(a_mask, a_area, b_mask, b_area):
@@ -48,13 +51,21 @@ def run_sahi_inference(
     rules = preset_cfg["class_rules"]
     model_conf = min(float(r["conf"]) for r in rules.values())
 
-    # Initialize SAHI model
-    sahi_model = AutoDetectionModel.from_pretrained(
-        model_type=SAHI_CFG.get("model_type", "yolov8"),
-        model_path=model_path,
-        confidence_threshold=model_conf,
-        device=device,
-    )
+    global _CACHED_SAHI_MODEL, _CACHED_MODEL_PATH
+    if _CACHED_SAHI_MODEL is None or _CACHED_MODEL_PATH != model_path:
+        _CACHED_SAHI_MODEL = AutoDetectionModel.from_pretrained(
+            model_type=SAHI_CFG.get("model_type", "yolov8"),
+            model_path=model_path,
+            confidence_threshold=model_conf,
+            device=device,
+        )
+        _CACHED_MODEL_PATH = model_path
+    sahi_model = _CACHED_SAHI_MODEL
+
+    try:
+        class_names = {int(k): v for k, v in sahi_model.model.names.items()}
+    except AttributeError:
+        class_names = _DEFAULT_CLASS_NAMES
 
     s = SAHI_CFG["sahi"]
     result = get_sliced_prediction(
@@ -89,7 +100,7 @@ def run_sahi_inference(
         dets.append(
             {
                 "cls": cls_id,
-                "name": CLASS_NAMES.get(cls_id, str(p.category.name)),
+                "name": class_names.get(cls_id, str(p.category.name)),
                 "score": float(p.score.value),
                 "mask": m,
                 "area": area,

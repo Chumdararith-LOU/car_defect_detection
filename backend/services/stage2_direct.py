@@ -27,8 +27,9 @@ def run_direct_inference(
     device: str = "cpu",
 ) -> list:
     """Runs standard Ultralytics YOLO inference at 1024px."""
+    img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
     results = model(
-        img_np, imgsz=1024, conf=conf_threshold, device=device, verbose=False
+        img_bgr, imgsz=1024, conf=conf_threshold, device=device, verbose=False
     )
     res = results[0]
 

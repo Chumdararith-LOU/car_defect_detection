@@ -14,7 +14,7 @@ export function BatchThumbnailGrid({ batch, onBack, onSelect }: Props) {
   const throughput = (batch.items.length / (batch.totalMs / 1000)).toFixed(1);
 
   return (
-    <div className="p-4 border-b border-border">
+    <div className="min-h-0 flex-1 overflow-y-auto p-4 border-b border-border">
       {/* Stats Header */}
       {batch.totalMs > 0 ? (
         <div className="mb-3 flex items-center gap-3 font-mono text-[10px] text-muted-foreground">
