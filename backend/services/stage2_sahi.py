@@ -67,6 +67,12 @@ def run_sahi_inference(
     )
     model_names = routing["models"]
 
+    gating_cfg = SAHI_CFG.get("two_tier_gating", {})
+    gating_enabled = gating_cfg.get("enabled", False)
+    gating_model = gating_cfg.get("applies_to", "objectness_branch_new")
+    obj_threshold = float(gating_cfg.get("obj_threshold", 0.15))
+    cls_threshold = float(gating_cfg.get("cls_threshold", 0.35))
+
     model_registry = SAHI_CFG.get("model_registry", {})
     loaded_models = {}
     for model_name in model_names:
@@ -120,13 +126,21 @@ def run_sahi_inference(
             if p.score.value < float(r["conf"]) or area < int(r["min_area"]):
                 continue
 
+            # Two-tier objectness gating (applies only to the designated model)
+            det_name = class_names.get(cls_id, str(p.category.name))
+            if gating_enabled and model_name == gating_model:
+                if p.score.value < obj_threshold:
+                    continue
+                if p.score.value < cls_threshold:
+                    det_name = "defect_unknown"
+
             ys, xs = np.nonzero(m)
             bbox = [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())]
 
             all_dets.append(
                 {
                     "cls": cls_id,
-                    "name": class_names.get(cls_id, str(p.category.name)),
+                    "name": det_name,
                     "score": float(p.score.value),
                     "mask": m,
                     "area": area,
