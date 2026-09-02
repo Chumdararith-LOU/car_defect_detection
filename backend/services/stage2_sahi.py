@@ -6,6 +6,19 @@ import yaml
 from sahi import AutoDetectionModel
 from sahi.predict import get_sliced_prediction
 
+import sys
+
+import ultralytics.nn.modules.head as head_module
+
+# Inject custom head class so torch.load can unpickle the objectness model
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_PROJECT_ROOT))
+from src.stage2.models.segment_head_with_obj import (  # noqa: E402
+    Segment26WithObjectness,
+)
+
+head_module.Segment26WithObjectness = Segment26WithObjectness
+
 CONFIG_PATH = (
     Path(__file__).resolve().parents[2]
     / "configs"
