@@ -84,53 +84,72 @@ def run_sahi_inference(
 
     if not loaded_models:
         raise ValueError(f"No registry models found for preset '{preset}'")
-    sahi_model = next(iter(loaded_models.values()))
-
-    try:
-        class_names = {int(k): v for k, v in sahi_model.model.names.items()}
-    except AttributeError:
-        class_names = _DEFAULT_CLASS_NAMES
-
-    s = SAHI_CFG["sahi"]
-    result = get_sliced_prediction(
-        img_np,
-        sahi_model,
-        slice_height=int(s["slice_size"]),
-        slice_width=int(s["slice_size"]),
-        overlap_height_ratio=float(s["overlap_ratio"]),
-        overlap_width_ratio=float(s["overlap_ratio"]),
-    )
-
     img_h, img_w = img_np.shape[:2]
-    dets = []
+    s = SAHI_CFG["sahi"]
 
-    for p in result.object_prediction_list:
+    # Run SAHI on each loaded model
+    all_dets = []
+    for model_name, sahi_model in loaded_models.items():
         try:
-            cls_id = int(p.category.id)
-        except Exception:
-            continue
+            class_names = {int(k): v for k, v in sahi_model.model.names.items()}
+        except AttributeError:
+            class_names = _DEFAULT_CLASS_NAMES
 
-        m = np.asarray(p.mask.bool_mask) > 0.5
-        area = int(m.sum())
-
-        # Per-class acceptance rules
-        r = rules.get(str(cls_id), rules.get("default", {"conf": 0.25, "min_area": 0}))
-        if p.score.value < float(r["conf"]) or area < int(r["min_area"]):
-            continue
-
-        ys, xs = np.nonzero(m)
-        bbox = [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())]
-
-        dets.append(
-            {
-                "cls": cls_id,
-                "name": class_names.get(cls_id, str(p.category.name)),
-                "score": float(p.score.value),
-                "mask": m,
-                "area": area,
-                "bbox": bbox,
-            }
+        result = get_sliced_prediction(
+            img_np,
+            sahi_model,
+            slice_height=int(s["slice_size"]),
+            slice_width=int(s["slice_size"]),
+            overlap_height_ratio=float(s["overlap_ratio"]),
+            overlap_width_ratio=float(s["overlap_ratio"]),
         )
+
+        for p in result.object_prediction_list:
+            try:
+                cls_id = int(p.category.id)
+            except Exception:
+                continue
+
+            m = np.asarray(p.mask.bool_mask) > 0.5
+            area = int(m.sum())
+
+            # Per-class acceptance rules
+            r = rules.get(
+                str(cls_id), rules.get("default", {"conf": 0.25, "min_area": 0})
+            )
+            if p.score.value < float(r["conf"]) or area < int(r["min_area"]):
+                continue
+
+            ys, xs = np.nonzero(m)
+            bbox = [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())]
+
+            all_dets.append(
+                {
+                    "cls": cls_id,
+                    "name": class_names.get(cls_id, str(p.category.name)),
+                    "score": float(p.score.value),
+                    "mask": m,
+                    "area": area,
+                    "bbox": bbox,
+                    "model_name": model_name,
+                }
+            )
+
+    # Apply merge strategy
+    merge_mode = routing.get("merge", "none")
+    if merge_mode == "per_class":
+        class_routing = routing.get("class_routing", {})
+        dets = [
+            d
+            for d in all_dets
+            if class_routing.get(d["name"]) is None
+            or d["model_name"] == class_routing.get(d["name"])
+        ]
+    else:  # "none" or "union"
+        dets = all_dets
+
+    for d in dets:
+        d.pop("model_name", None)
 
     # Mask-IOS NMS
     thr = float(SAHI_CFG["nms"]["ios_threshold"])
