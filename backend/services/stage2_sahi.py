@@ -67,11 +67,16 @@ def run_sahi_inference(
     )
     model_names = routing["models"]
 
-    gating_cfg = SAHI_CFG.get("two_tier_gating", {})
-    gating_enabled = gating_cfg.get("enabled", False)
-    gating_model = gating_cfg.get("applies_to", "objectness_branch_new")
-    obj_threshold = float(gating_cfg.get("obj_threshold", 0.15))
-    cls_threshold = float(gating_cfg.get("cls_threshold", 0.35))
+    global_gating = SAHI_CFG.get("two_tier_gating", {})
+    preset_gating = preset_cfg.get("two_tier_gating", {})
+    gating_enabled = global_gating.get("enabled", False)
+    gating_model = global_gating.get("applies_to", "objectness_branch_new")
+    obj_threshold = float(
+        preset_gating.get("obj_threshold", global_gating.get("obj_threshold", 0.20))
+    )
+    cls_threshold = float(
+        preset_gating.get("cls_threshold", global_gating.get("cls_threshold", 0.25))
+    )
 
     model_registry = SAHI_CFG.get("model_registry", {})
     loaded_models = {}
