@@ -20,7 +20,7 @@ DEFAULT_STAGE2_CLASSES = [
     "scratch",
     "crack",
     "glass_shatter",
-    "broken_part",
+    "broken_lamp",
     "corrosion",
     "disjoint_part",
 ]
