@@ -39,6 +39,12 @@ routing_strategy:
       dent: baseline_m5
       scratch: baseline_m5
 
+two_tier_gating:
+  enabled: true
+  obj_threshold: 0.15    # Below this → suppress (background)
+  cls_threshold: 0.35    # Below this → "defect_unknown"
+  # Only applies to objectness_branch_new model
+
 presets:
   balanced:   # ~1 false alarm per suspect car. Avoids operator alarm fatigue.
     class_rules:
