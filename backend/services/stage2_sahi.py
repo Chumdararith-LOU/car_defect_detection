@@ -38,8 +38,7 @@ _DEFAULT_CLASS_NAMES = {
     6: "disjoint_part",
 }
 
-_CACHED_SAHI_MODEL = None
-_CACHED_MODEL_PATH = None
+_CACHED_MODELS = {}
 
 
 def mask_ios(a_mask, a_area, b_mask, b_area):
@@ -54,7 +53,6 @@ def _boxes_overlap(a, b):
 
 def run_sahi_inference(
     img_np: np.ndarray,
-    model_path: str,
     inspection_id: str,
     preset: str = "balanced",
     device: str = "cpu",
@@ -64,16 +62,29 @@ def run_sahi_inference(
     rules = preset_cfg["class_rules"]
     model_conf = min(float(r["conf"]) for r in rules.values())
 
-    global _CACHED_SAHI_MODEL, _CACHED_MODEL_PATH
-    if _CACHED_SAHI_MODEL is None or _CACHED_MODEL_PATH != model_path:
-        _CACHED_SAHI_MODEL = AutoDetectionModel.from_pretrained(
-            model_type=SAHI_CFG.get("model_type", "yolov8"),
-            model_path=model_path,
-            confidence_threshold=model_conf,
-            device=device,
-        )
-        _CACHED_MODEL_PATH = model_path
-    sahi_model = _CACHED_SAHI_MODEL
+    routing = SAHI_CFG.get("routing_strategy", {}).get(
+        preset, {"models": ["objectness_branch_new"], "merge": "none"}
+    )
+    model_names = routing["models"]
+
+    model_registry = SAHI_CFG.get("model_registry", {})
+    loaded_models = {}
+    for model_name in model_names:
+        model_path = model_registry.get(model_name)
+        if not model_path:
+            continue
+        if model_name not in _CACHED_MODELS:
+            _CACHED_MODELS[model_name] = AutoDetectionModel.from_pretrained(
+                model_type=SAHI_CFG.get("model_type", "yolov8"),
+                model_path=model_path,
+                confidence_threshold=model_conf,
+                device=device,
+            )
+        loaded_models[model_name] = _CACHED_MODELS[model_name]
+
+    if not loaded_models:
+        raise ValueError(f"No registry models found for preset '{preset}'")
+    sahi_model = next(iter(loaded_models.values()))
 
     try:
         class_names = {int(k): v for k, v in sahi_model.model.names.items()}

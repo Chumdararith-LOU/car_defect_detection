@@ -105,7 +105,6 @@ def run_inspection(
             try:
                 defects = run_sahi_inference(
                     img_np,
-                    stage2_model_path,
                     inspection_id,
                     stage2_preset,
                     resolved_device,
