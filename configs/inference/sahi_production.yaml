@@ -2,7 +2,13 @@ preset: balanced
 
 model_type: yolov8
 model_path: backend/models/stage2/deployed.pt
-device: auto # auto | cuda | mps | cpu
+device: mps # auto | cuda | mps | cpu
+
+model_registry:
+  objectness_branch_new: runs/segment/seesaw_surgical_objectness-26/weights/best.pt
+  baseline_m5: runs/segment/stage1_head_warmup_7cls_extended/stage1_head_warmup_7cls_extended/weights/best.pt
+  surgical_early: runs/segment/seesaw_surgical_early/weights/best.pt
+  model_4: runs/segment/model5_resume_adapt_7cls/stage2_differential_finetune_7cls/weights/best.pt
 
 sahi:
   slice_size: 1024      # MUST match training resolution (Native Resolution Rule)
@@ -10,6 +16,28 @@ sahi:
 
 nms:
   ios_threshold: 0.50  # mask Intersection-over-Smaller (thin-defect safe)
+
+routing_strategy:
+  balanced:
+    models: [objectness_branch_new]
+    merge: none
+  safety:
+    models: [objectness_branch_new, baseline_m5]
+    merge: union
+  max_recall:
+    models: [objectness_branch_new, baseline_m5, surgical_early, model_4]
+    merge: union
+  specialist:
+    models: [objectness_branch_new, baseline_m5]
+    merge: per_class
+    class_routing:
+      corrosion: objectness_branch_new
+      disjoint_part: objectness_branch_new
+      glass_shatter: objectness_branch_new
+      broken_lamp: baseline_m5
+      crack: baseline_m5
+      dent: baseline_m5
+      scratch: baseline_m5
 
 presets:
   balanced:   # ~1 false alarm per suspect car. Avoids operator alarm fatigue.
