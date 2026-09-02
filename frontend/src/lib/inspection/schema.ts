@@ -6,7 +6,8 @@ export type DefectClass =
   | "glass_shatter"
   | "broken_lamp"
   | "corrosion"
-  | "disjoint_part";
+  | "disjoint_part"
+  | "defect_unknown";
 export type PanelId =
   | "quarter_panel"
   | "front_wheel"

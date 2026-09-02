@@ -9,6 +9,7 @@ export const DEFECT_CLASSES: { id: DefectClass; label: string; color: string }[]
   { id: "broken_lamp", label: "Broken Lamp", color: "var(--defect-broken_lamp)" },
   { id: "corrosion", label: "Corrosion", color: "var(--defect-corrosion)" },
   { id: "disjoint_part", label: "Disjoint Part", color: "var(--defect-disjoint_part)" },
+  { id: "defect_unknown", label: "Defect (Unknown)", color: "var(--defect-unknown)" },
 ];
 
 export const PANEL_LABELS: Record<PanelId, string> = {
