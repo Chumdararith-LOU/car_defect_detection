@@ -56,7 +56,7 @@ interface Props {
     modelName?: string;
     stage2ModelName?: string;
     stage2Mode?: "direct" | "sahi";
-    stage2Preset?: "balanced" | "safety" | "max_recall";
+    stage2Preset?: "balanced" | "safety" | "max_recall" | "legacy_champion";
     stage2Conf?: number;
     device?: string;
   }) => void;
@@ -437,6 +437,9 @@ export function ControlSidebar({
             </SelectItem>
             <SelectItem value="max_recall" className="text-xs">
               Max Recall
+            </SelectItem>
+            <SelectItem value="legacy_champion" className="text-xs">
+              Legacy Champion (1 model)
             </SelectItem>
           </SelectContent>
         </Select>

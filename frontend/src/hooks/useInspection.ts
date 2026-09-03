@@ -304,7 +304,7 @@ export function useInspection(defaults: { imageUrl: string; imageName: string })
       modelName?: string;
       stage2ModelName?: string;
       stage2Mode?: "direct" | "sahi";
-      stage2Preset?: "balanced" | "safety" | "max_recall";
+      stage2Preset?: "balanced" | "safety" | "max_recall" | "legacy_champion";
       stage2Conf?: number;
       device?: string;
     }) => {
