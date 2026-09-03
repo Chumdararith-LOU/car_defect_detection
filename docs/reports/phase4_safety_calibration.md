@@ -63,3 +63,50 @@ training data, which is currently blocked (no retraining server available).
 
 If a hard >= 93% recall floor is mandated, use **union routing** (the
 Phase 4F baseline), which achieves 94.4% recall at 59.3% FPR.
+
+---
+
+## Addendum (supersedes earlier numbers)
+
+### Class-order incident
+
+Two taxonomy families exist:
+
+- **Alphabetical**: `objectness_branch_new`, `surgical_early`
+- **Canonical**: `baseline_m5`, `model_4`
+
+The id-keyed `class_rules` misapplied thresholds on the alphabetical
+family (cross-family id swap). **ALL live numbers measured before commit
+`a65d347` are VOID.** Fixed by name-keyed `class_rules` plus
+`CANONICAL_ALIASES` (`a65d347` backend, `51dc2bc` legacy engine).
+
+### Contamination fix
+
+`broken_part` and `disjoint_part` are routed exclusively to
+`baseline_m5` — `objectness_branch_new`'s versions of both classes are
+remap-contaminated. `objectness_branch_new` keeps only `corrosion` +
+`glass_shatter`.
+
+### disjoint_part conf sweep (live, full 743-image calibration set)
+
+| conf | FPR | Recall | disjoint_dets | time |
+|------|-----|--------|---------------|------|
+| 0.10 | 50.7% | 94.3% | 359 | 432s |
+| 0.15 | 49.3% | 94.3% | 144 | 414s |
+| 0.20 | 48.7% | 94.3% | 67 | 420s |
+| **0.25** | **46.7%** | **94.3%** | **28** | 427s |
+| 0.30 | 46.7% | 94.3% | 10 | 427s |
+
+Chose **0.25** as the knee: identical FPR/recall to 0.30, but preserves
+label fidelity from the semantically-correct model.
+
+### Final locked operating point
+
+`safety` = per_class routing + `disjoint_part.conf: 0.25`:
+
+- **FPR: 46.7% (70/150)**
+- **Recall: 94.3% (559/593)**
+
+The residual FPR is structural: 22% of clean images emit >= 0.60-conf
+hallucinations (see §5) that no threshold can remove. Closing it requires
+hard-negative mining plus retraining.
