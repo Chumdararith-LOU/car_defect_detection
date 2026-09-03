@@ -21,10 +21,13 @@ CLASS_NAMES = {
     1: "scratch",
     2: "crack",
     3: "glass_shatter",
-    4: "broken_lamp",
+    4: "broken_part",
     5: "corrosion",
     6: "disjoint_part",
 }
+
+# Models emit "broken_lamp"; operators' canonical umbrella term is "broken_part"
+CANONICAL_ALIASES = {"broken_lamp": "broken_part"}
 
 
 def load_config(path):
@@ -55,8 +58,10 @@ class SahiInference:
         )
 
     def _accepted(self, cls_id, score, area):
+        name = CLASS_NAMES.get(cls_id, str(cls_id))
+        name = CANONICAL_ALIASES.get(name, name)
         r = self.rules.get(
-            str(cls_id), self.rules.get("default", {"conf": 0.25, "min_area": 0})
+            name, self.rules.get("default", {"conf": 0.25, "min_area": 0})
         )
         return score >= float(r["conf"]) and area >= int(r["min_area"])
 
@@ -81,10 +86,12 @@ class SahiInference:
             if not self._accepted(cls_id, p.score.value, area):
                 continue
             ys, xs = np.nonzero(m)
+            det_name = CLASS_NAMES.get(cls_id, str(p.category.name))
+            det_name = CANONICAL_ALIASES.get(det_name, det_name)
             dets.append(
                 {
                     "cls": cls_id,
-                    "name": CLASS_NAMES.get(cls_id, str(p.category.name)),
+                    "name": det_name,
                     "score": float(p.score.value),
                     "mask": m,
                     "area": area,
@@ -134,7 +141,7 @@ class SahiInference:
                 cv2.RETR_EXTERNAL,
                 cv2.CHAIN_APPROX_SIMPLE,
             )
-            if d["cls"] in (5, 6):
+            if d["name"] in ("corrosion", "disjoint_part"):
                 cv2.drawContours(vis, cnts, -1, (0, 0, 255), 2)
                 cv2.putText(
                     vis,
