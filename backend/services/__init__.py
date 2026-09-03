@@ -96,7 +96,7 @@ def run_inspection(
     # --- STAGE 2: DEFECT LOCALIZATION ---
     defects = []
 
-    if enable_stage2 and stage2_model_name and stage2_model_path:
+    if enable_stage2:
         logger.info(
             "Stage 2 | Mode: %s | Routing to Defect Localization...", stage2_mode
         )
@@ -114,12 +114,21 @@ def run_inspection(
                 stage2_mode = "direct"
 
         if stage2_mode == "direct":
-            # We need the loaded model object for direct inference
-            s2_model_obj = model_manager.get_model(stage2_model_name, stage="stage2")
-            if s2_model_obj:
-                defects = run_direct_inference(
-                    img_np, s2_model_obj, inspection_id, stage2_conf, resolved_device
+            if not stage2_model_name:
+                logger.warning("Stage 2 direct mode requires a model name; skipping.")
+            else:
+                # We need the loaded model object for direct inference
+                s2_model_obj = model_manager.get_model(
+                    stage2_model_name, stage="stage2"
                 )
+                if s2_model_obj:
+                    defects = run_direct_inference(
+                        img_np,
+                        s2_model_obj,
+                        inspection_id,
+                        stage2_conf,
+                        resolved_device,
+                    )
 
     # --- STAGE 3: PANEL SEGMENTATION ---
     panels = []
