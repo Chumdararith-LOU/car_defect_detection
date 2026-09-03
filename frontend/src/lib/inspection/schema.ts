@@ -4,7 +4,7 @@ export type DefectClass =
   | "scratch"
   | "crack"
   | "glass_shatter"
-  | "broken_lamp"
+  | "broken_part"
   | "corrosion"
   | "disjoint_part"
   | "defect_unknown";

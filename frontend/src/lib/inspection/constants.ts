@@ -6,7 +6,7 @@ export const DEFECT_CLASSES: { id: DefectClass; label: string; color: string }[]
   { id: "scratch", label: "Scratch", color: "var(--defect-scratch)" },
   { id: "crack", label: "Crack", color: "var(--defect-crack)" },
   { id: "glass_shatter", label: "Glass Shatter", color: "var(--defect-glass_shatter)" },
-  { id: "broken_lamp", label: "Broken Lamp", color: "var(--defect-broken_lamp)" },
+  { id: "broken_part", label: "Broken Part", color: "var(--defect-broken_part)" },
   { id: "corrosion", label: "Corrosion", color: "var(--defect-corrosion)" },
   { id: "disjoint_part", label: "Disjoint Part", color: "var(--defect-disjoint_part)" },
   { id: "defect_unknown", label: "Defect (Unknown)", color: "var(--defect-unknown)" },
