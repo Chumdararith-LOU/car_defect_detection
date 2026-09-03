@@ -72,7 +72,7 @@ export interface ModelListResponse {
 }
 
 export type Stage2Mode = "direct" | "sahi";
-export type Stage2Preset = "balanced" | "safety" | "max_recall" | "legacy_champion";
+export type Stage2Preset = "balanced" | "safety" | "max_recall" | "legacy_champion" | "single_objectness" | "single_baseline_m5" | "single_model_4";
 
 export interface InspectParams {
   file: File;

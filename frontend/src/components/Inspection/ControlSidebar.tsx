@@ -44,6 +44,16 @@ const VIEW_STAGES: { id: ViewStage; label: string }[] = [
   { id: 3, label: "Context" },
 ];
 
+const SAHI_RUN_CONFIGS: { value: Stage2Preset; label: string }[] = [
+  { value: "safety", label: "Ensemble — Safety (2 models)" },
+  { value: "max_recall", label: "Ensemble — Max Recall (4 models)" },
+  { value: "balanced", label: "Ensemble — Balanced (1 model)" },
+  { value: "single_objectness", label: "Single — Objectness champion" },
+  { value: "legacy_champion", label: "Single — Old champion (surgical_early)" },
+  { value: "single_baseline_m5", label: "Single — Baseline M5" },
+  { value: "single_model_4", label: "Single — Model 4" },
+];
+
 interface Props {
   imageName: string | null;
   stage: PipelineStage;
@@ -56,7 +66,7 @@ interface Props {
     modelName?: string;
     stage2ModelName?: string;
     stage2Mode?: "direct" | "sahi";
-    stage2Preset?: "balanced" | "safety" | "max_recall" | "legacy_champion";
+    stage2Preset?: Stage2Preset;
     stage2Conf?: number;
     device?: string;
   }) => void;
@@ -359,24 +369,42 @@ export function ControlSidebar({
         <p className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           Stage 2 Model
         </p>
-        <Select
-          value={selectedStage2Model}
-          onValueChange={setSelectedStage2Model}
-          disabled={stage2Models.length === 0}
-        >
-          <SelectTrigger className="h-8 text-xs">
-            <SelectValue
-              placeholder={stage2Models.length === 0 ? "No Stage 2 models" : "Select a model"}
-            />
-          </SelectTrigger>
-          <SelectContent>
-            {stage2Models.map((m) => (
-              <SelectItem key={m} value={m} className="text-xs">
-                {m}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {stage2Mode === "sahi" ? (
+          <Select
+            value={stage2Preset}
+            onValueChange={(v) => setStage2Preset(v as Stage2Preset)}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Select run config" />
+            </SelectTrigger>
+            <SelectContent>
+              {SAHI_RUN_CONFIGS.map((c) => (
+                <SelectItem key={c.value} value={c.value} className="text-xs">
+                  {c.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Select
+            value={selectedStage2Model}
+            onValueChange={setSelectedStage2Model}
+            disabled={stage2Models.length === 0}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue
+                placeholder={stage2Models.length === 0 ? "No Stage 2 models" : "Select a model"}
+              />
+            </SelectTrigger>
+            <SelectContent>
+              {stage2Models.map((m) => (
+                <SelectItem key={m} value={m} className="text-xs">
+                  {m}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       <div className="space-y-1.5">
@@ -414,38 +442,6 @@ export function ControlSidebar({
             </span>
           </button>
         </div>
-      </div>
-
-      <div className="space-y-1.5" title="Presets apply to the SAHI pipeline">
-        <p className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-          SAHI Preset
-        </p>
-        <Select
-          value={stage2Preset}
-          onValueChange={(v) => setStage2Preset(v as typeof stage2Preset)}
-          disabled={stage2Mode !== "sahi"}
-        >
-          <SelectTrigger className="h-8 text-xs">
-            <SelectValue placeholder="Select preset" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="balanced" className="text-xs">
-              Balanced
-            </SelectItem>
-            <SelectItem value="safety" className="text-xs">
-              Safety
-            </SelectItem>
-            <SelectItem value="max_recall" className="text-xs">
-              Max Recall
-            </SelectItem>
-            <SelectItem value="legacy_champion" className="text-xs">
-              Legacy Champion (1 model)
-            </SelectItem>
-          </SelectContent>
-        </Select>
-        {stage2Mode !== "sahi" && (
-          <p className="text-[10px] text-muted-foreground">Presets apply to the SAHI pipeline.</p>
-        )}
       </div>
 
       <div className="space-y-1.5" title="Direct confidence applies to Fast mode only">

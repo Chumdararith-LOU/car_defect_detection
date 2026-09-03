@@ -21,7 +21,7 @@ export interface BatchState {
   totalMs: number | null;
   deviceUsed: string;
 }
-import { runInspection } from "@/lib/inspection/apiClient";
+import { runInspection, type Stage2Preset } from "@/lib/inspection/apiClient";
 
 function base64ToFile(base64: string, filename: string): File | null {
   try {
@@ -304,7 +304,7 @@ export function useInspection(defaults: { imageUrl: string; imageName: string })
       modelName?: string;
       stage2ModelName?: string;
       stage2Mode?: "direct" | "sahi";
-      stage2Preset?: "balanced" | "safety" | "max_recall" | "legacy_champion";
+      stage2Preset?: Stage2Preset;
       stage2Conf?: number;
       device?: string;
     }) => {
