@@ -37,6 +37,15 @@ routing_strategy:
   legacy_champion:
     models: [surgical_early]
     merge: none
+  single_objectness:
+    models: [objectness_branch_new]
+    merge: none
+  single_baseline_m5:
+    models: [baseline_m5]
+    merge: none
+  single_model_4:
+    models: [model_4]
+    merge: none
   specialist:
     models: [objectness_branch_new, baseline_m5]
     merge: per_class
@@ -97,6 +106,36 @@ presets:
       obj_threshold: 0.10
       cls_threshold: 0.25
   legacy_champion:   # single-model SAHI: old champion (seesaw_surgical_early)
+    class_rules:
+      default: { conf: 0.25, min_area: 0 }
+      dent: { conf: 0.25, min_area: 0 }
+      scratch: { conf: 0.25, min_area: 0 }
+      crack: { conf: 0.25, min_area: 0 }
+      glass_shatter: { conf: 0.25, min_area: 0 }
+      broken_part: { conf: 0.25, min_area: 0 }
+      corrosion: { conf: 0.15, min_area: 30 }
+      disjoint_part: { conf: 0.15, min_area: 200 }
+  single_objectness:   # single-model SAHI: pre-Phase-4 thresholds
+    class_rules:
+      default: { conf: 0.25, min_area: 0 }
+      dent: { conf: 0.25, min_area: 0 }
+      scratch: { conf: 0.25, min_area: 0 }
+      crack: { conf: 0.25, min_area: 0 }
+      glass_shatter: { conf: 0.25, min_area: 0 }
+      broken_part: { conf: 0.25, min_area: 0 }
+      corrosion: { conf: 0.15, min_area: 30 }
+      disjoint_part: { conf: 0.15, min_area: 200 }
+  single_baseline_m5:   # single-model SAHI: pre-Phase-4 thresholds
+    class_rules:
+      default: { conf: 0.25, min_area: 0 }
+      dent: { conf: 0.25, min_area: 0 }
+      scratch: { conf: 0.25, min_area: 0 }
+      crack: { conf: 0.25, min_area: 0 }
+      glass_shatter: { conf: 0.25, min_area: 0 }
+      broken_part: { conf: 0.25, min_area: 0 }
+      corrosion: { conf: 0.15, min_area: 30 }
+      disjoint_part: { conf: 0.15, min_area: 200 }
+  single_model_4:   # single-model SAHI: pre-Phase-4 thresholds
     class_rules:
       default: { conf: 0.25, min_area: 0 }
       dent: { conf: 0.25, min_area: 0 }
