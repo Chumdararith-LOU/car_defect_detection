@@ -21,15 +21,16 @@ routing_strategy:
   balanced:
     models: [objectness_branch_new]
     merge: none
-  # LIVE-CALIBRATED on M5 (Phase 4F): per_class routing, FPR 54.0% / Recall 92.9%. See docs/reports/phase4_safety_calibration.md
+  # per_class routing, broken_part+disjoint_part owned by baseline_m5, LIVE-CALIBRATED FPR 46.7% / Recall 94.3% (see docs/reports/phase4_safety_calibration.md)
   safety:
     models: [objectness_branch_new, baseline_m5]
     merge: per_class
     class_routing:
       corrosion: objectness_branch_new
-      disjoint_part: objectness_branch_new
       glass_shatter: objectness_branch_new
-      # broken_lamp, crack, dent, scratch: undesignated → both models contribute
+      broken_part: baseline_m5
+      disjoint_part: baseline_m5
+      # crack, dent, scratch: undesignated → both models contribute
   max_recall:
     models: [objectness_branch_new, baseline_m5, surgical_early, model_4]
     merge: union
@@ -41,7 +42,7 @@ routing_strategy:
     merge: per_class
     class_routing:
       corrosion: objectness_branch_new
-      disjoint_part: objectness_branch_new
+      disjoint_part: baseline_m5
       glass_shatter: objectness_branch_new
       broken_part: baseline_m5
       crack: baseline_m5
@@ -78,7 +79,7 @@ presets:
       glass_shatter: { conf: 0.25, min_area: 0 }
       broken_part: { conf: 0.25, min_area: 0 }
       corrosion: { conf: 0.10, min_area: 30 }
-      disjoint_part: { conf: 0.10, min_area: 200 }
+      disjoint_part: { conf: 0.25, min_area: 200 }
     two_tier_gating:
       obj_threshold: 0.20
       cls_threshold: 0.25
