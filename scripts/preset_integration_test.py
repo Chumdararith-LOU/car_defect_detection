@@ -24,7 +24,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--preset",
     required=True,
-    choices=["balanced", "safety", "specialist", "max_recall"],
+    choices=["balanced", "safety", "specialist", "max_recall", "legacy_champion"],
 )
 parser.add_argument(
     "--limit", type=int, default=0, help="0 = all images; N = up to N per class"

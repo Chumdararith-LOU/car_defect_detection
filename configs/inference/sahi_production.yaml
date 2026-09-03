@@ -33,6 +33,9 @@ routing_strategy:
   max_recall:
     models: [objectness_branch_new, baseline_m5, surgical_early, model_4]
     merge: union
+  legacy_champion:
+    models: [surgical_early]
+    merge: none
   specialist:
     models: [objectness_branch_new, baseline_m5]
     merge: per_class
@@ -89,6 +92,15 @@ presets:
     two_tier_gating:
       obj_threshold: 0.10
       cls_threshold: 0.25
+  legacy_champion:   # single-model SAHI: old champion (seesaw_surgical_early)
+    class_rules:
+      "0": { conf: 0.25, min_area: 0 }
+      "1": { conf: 0.25, min_area: 0 }
+      "2": { conf: 0.25, min_area: 0 }
+      "3": { conf: 0.25, min_area: 0 }
+      "4": { conf: 0.25, min_area: 0 }
+      "5": { conf: 0.15, min_area: 30 }
+      "6": { conf: 0.15, min_area: 200 }
   calib:      # threshold-sweep only, never ship to production
     class_rules:
       "0": { conf: 0.25, min_area: 0 }
