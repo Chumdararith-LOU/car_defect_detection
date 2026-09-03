@@ -179,13 +179,15 @@ def run_sahi_inference(
     for d in dets:
         d.pop("model_name", None)
 
-    # Mask-IOS NMS
+    # Mask-IOS NMS (keyed by canonical name: the two taxonomy families
+    # use different raw ids for the same class, so id-keyed dedup lets
+    # cross-model duplicates survive)
     thr = float(SAHI_CFG["nms"]["ios_threshold"])
     dets.sort(key=lambda d: -d["score"])
     kept = []
     for d in dets:
         if not any(
-            d["cls"] == k["cls"]
+            d["name"] == k["name"]
             and _boxes_overlap(d["bbox"], k["bbox"])
             and mask_ios(d["mask"], d["area"], k["mask"], k["area"]) >= thr
             for k in kept
