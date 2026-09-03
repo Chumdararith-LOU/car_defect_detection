@@ -97,8 +97,8 @@ export function ControlSidebar({
   const [models, setModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [selectedStage2Model, setSelectedStage2Model] = useState<string>("");
-  const [stage2Mode, setStage2Mode] = useState<Stage2Mode>("direct");
-  const [stage2Preset, setStage2Preset] = useState<Stage2Preset>("balanced");
+  const [stage2Mode, setStage2Mode] = useState<Stage2Mode>("sahi");
+  const [stage2Preset, setStage2Preset] = useState<Stage2Preset>("safety");
   const [stage2Conf, setStage2Conf] = useState<number>(0.15);
   const [devices, setDevices] = useState<SystemDevices | null>(null);
   const [device, setDevice] = useState<string>("auto");
