@@ -1,4 +1,4 @@
-preset: balanced
+preset: safety
 
 model_type: yolov8
 model_path: backend/models/stage2/deployed.pt
