@@ -54,7 +54,20 @@ def api_rename_batch(batch_id: str, body: BatchRenameRequest):
 @router.delete("/batches/{batch_id}")
 def api_delete_batch(batch_id: str):
     try:
+        batch = registry.get_batch(batch_id)
         registry.delete_batch(batch_id)
+        from services.dataset_import import delete_saved_inspection
+
+        for insp_id in (batch or {}).get("inspection_ids", []):
+            try:
+                delete_saved_inspection(insp_id)
+            except Exception as e:
+                logger.warning(
+                    "Batch %s: could not delete inspection %s: %s",
+                    batch_id,
+                    insp_id,
+                    e,
+                )
         return {"success": True, "message": f"Batch '{batch_id}' deleted"}
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
