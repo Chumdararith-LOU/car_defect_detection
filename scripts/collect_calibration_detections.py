@@ -45,10 +45,20 @@ SAHI_CFG["two_tier_gating"]["obj_threshold"] = 0.01
 SAHI_CFG["two_tier_gating"]["cls_threshold"] = 0.01
 
 # Override per-class acceptance rules so every detection above the model
-# floor (0.01) is captured for offline sweeping.
-for rule in SAHI_CFG["presets"][PRESET]["class_rules"].values():
-    rule["conf"] = 0.01
-    rule["min_area"] = 0
+# floor (0.01) is captured for offline sweeping (name-keyed rules).
+SAHI_CFG["presets"][PRESET]["class_rules"] = {
+    name: {"conf": 0.01, "min_area": 0}
+    for name in [
+        "default",
+        "dent",
+        "scratch",
+        "crack",
+        "glass_shatter",
+        "broken_part",
+        "corrosion",
+        "disjoint_part",
+    ]
+}
 
 
 def collect_images(d: Path) -> list:

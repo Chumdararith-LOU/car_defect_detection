@@ -33,10 +33,13 @@ _DEFAULT_CLASS_NAMES = {
     1: "scratch",
     2: "crack",
     3: "glass_shatter",
-    4: "broken_lamp",
+    4: "broken_part",
     5: "corrosion",
     6: "disjoint_part",
 }
+
+# Models emit "broken_lamp"; operators' canonical umbrella term is "broken_part"
+CANONICAL_ALIASES = {"broken_lamp": "broken_part"}
 
 _CACHED_MODELS = {}
 
@@ -127,15 +130,18 @@ def run_sahi_inference(
             m = np.asarray(p.mask.bool_mask) > 0.5
             area = int(m.sum())
 
-            # Per-class acceptance rules
-            r = rules.get(
-                str(cls_id), rules.get("default", {"conf": 0.25, "min_area": 0})
-            )
+            # Canonicalize name first so name-keyed rules hit across both
+            # taxonomy families (id 4 is broken_lamp OR disjoint_part
+            # depending on the model).
+            raw_name = class_names.get(cls_id, str(p.category.name))
+            det_name = CANONICAL_ALIASES.get(raw_name, raw_name)
+
+            # Per-class acceptance rules (name-keyed)
+            r = rules.get(det_name, rules.get("default", {"conf": 0.25, "min_area": 0}))
             if p.score.value < float(r["conf"]) or area < int(r["min_area"]):
                 continue
 
             # Two-tier objectness gating (applies only to the designated model)
-            det_name = class_names.get(cls_id, str(p.category.name))
             if gating_enabled and model_name == gating_model:
                 if p.score.value < obj_threshold:
                     continue

@@ -43,7 +43,17 @@ if not CLEAN_DIR.exists():
 # Override preset thresholds so every detection is captured. routing_strategy
 # (per_class merge) is intentionally left untouched.
 SAHI_CFG["presets"][PRESET]["class_rules"] = {
-    str(i): {"conf": 0.01, "min_area": 0} for i in range(7)
+    name: {"conf": 0.01, "min_area": 0}
+    for name in [
+        "default",
+        "dent",
+        "scratch",
+        "crack",
+        "glass_shatter",
+        "broken_part",
+        "corrosion",
+        "disjoint_part",
+    ]
 }
 SAHI_CFG["presets"][PRESET]["two_tier_gating"] = {
     "obj_threshold": 0.01,

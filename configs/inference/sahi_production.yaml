@@ -43,7 +43,7 @@ routing_strategy:
       corrosion: objectness_branch_new
       disjoint_part: objectness_branch_new
       glass_shatter: objectness_branch_new
-      broken_lamp: baseline_m5
+      broken_part: baseline_m5
       crack: baseline_m5
       dent: baseline_m5
       scratch: baseline_m5
@@ -58,58 +58,63 @@ two_tier_gating:
 presets:
   balanced:   # ~1 false alarm per suspect car. Avoids operator alarm fatigue.
     class_rules:
-      "0": { conf: 0.25, min_area: 0 }
-      "1": { conf: 0.25, min_area: 0 }
-      "2": { conf: 0.25, min_area: 0 }
-      "3": { conf: 0.25, min_area: 0 }
-      "4": { conf: 0.25, min_area: 0 }
-      "5": { conf: 0.15, min_area: 30 }    # corrosion
-      "6": { conf: 0.15, min_area: 200 }   # disjoint_part
+      default: { conf: 0.25, min_area: 0 }
+      dent: { conf: 0.25, min_area: 0 }
+      scratch: { conf: 0.25, min_area: 0 }
+      crack: { conf: 0.25, min_area: 0 }
+      glass_shatter: { conf: 0.25, min_area: 0 }
+      broken_part: { conf: 0.25, min_area: 0 }
+      corrosion: { conf: 0.15, min_area: 30 }
+      disjoint_part: { conf: 0.15, min_area: 200 }
     two_tier_gating:
       obj_threshold: 0.35
       cls_threshold: 0.35
   safety:     # ~4 false alarms per suspect car. Recall-first for critical shifts.
     class_rules:
-      "0": { conf: 0.25, min_area: 0 }
-      "1": { conf: 0.25, min_area: 0 }
-      "2": { conf: 0.25, min_area: 0 }
-      "3": { conf: 0.25, min_area: 0 }
-      "4": { conf: 0.25, min_area: 0 }
-      "5": { conf: 0.10, min_area: 30 }
-      "6": { conf: 0.10, min_area: 200 }
+      default: { conf: 0.25, min_area: 0 }
+      dent: { conf: 0.25, min_area: 0 }
+      scratch: { conf: 0.25, min_area: 0 }
+      crack: { conf: 0.25, min_area: 0 }
+      glass_shatter: { conf: 0.25, min_area: 0 }
+      broken_part: { conf: 0.25, min_area: 0 }
+      corrosion: { conf: 0.10, min_area: 30 }
+      disjoint_part: { conf: 0.10, min_area: 200 }
     two_tier_gating:
       obj_threshold: 0.20
       cls_threshold: 0.25
   max_recall: # ~10 false alarms per suspect car. Maximum coverage.
     class_rules:
-      "0": { conf: 0.25, min_area: 0 }
-      "1": { conf: 0.25, min_area: 0 }
-      "2": { conf: 0.25, min_area: 0 }
-      "3": { conf: 0.25, min_area: 0 }
-      "4": { conf: 0.25, min_area: 0 }
-      "5": { conf: 0.05, min_area: 30 }
-      "6": { conf: 0.05, min_area: 200 }
+      default: { conf: 0.25, min_area: 0 }
+      dent: { conf: 0.25, min_area: 0 }
+      scratch: { conf: 0.25, min_area: 0 }
+      crack: { conf: 0.25, min_area: 0 }
+      glass_shatter: { conf: 0.25, min_area: 0 }
+      broken_part: { conf: 0.25, min_area: 0 }
+      corrosion: { conf: 0.05, min_area: 30 }
+      disjoint_part: { conf: 0.05, min_area: 200 }
     two_tier_gating:
       obj_threshold: 0.10
       cls_threshold: 0.25
   legacy_champion:   # single-model SAHI: old champion (seesaw_surgical_early)
     class_rules:
-      "0": { conf: 0.25, min_area: 0 }
-      "1": { conf: 0.25, min_area: 0 }
-      "2": { conf: 0.25, min_area: 0 }
-      "3": { conf: 0.25, min_area: 0 }
-      "4": { conf: 0.25, min_area: 0 }
-      "5": { conf: 0.15, min_area: 30 }
-      "6": { conf: 0.15, min_area: 200 }
+      default: { conf: 0.25, min_area: 0 }
+      dent: { conf: 0.25, min_area: 0 }
+      scratch: { conf: 0.25, min_area: 0 }
+      crack: { conf: 0.25, min_area: 0 }
+      glass_shatter: { conf: 0.25, min_area: 0 }
+      broken_part: { conf: 0.25, min_area: 0 }
+      corrosion: { conf: 0.15, min_area: 30 }
+      disjoint_part: { conf: 0.15, min_area: 200 }
   calib:      # threshold-sweep only, never ship to production
     class_rules:
-      "0": { conf: 0.25, min_area: 0 }
-      "1": { conf: 0.25, min_area: 0 }
-      "2": { conf: 0.25, min_area: 0 }
-      "3": { conf: 0.25, min_area: 0 }
-      "4": { conf: 0.25, min_area: 0 }
-      "5": { conf: 0.05, min_area: 30 }
-      "6": { conf: 0.05, min_area: 200 }
+      default: { conf: 0.25, min_area: 0 }
+      dent: { conf: 0.25, min_area: 0 }
+      scratch: { conf: 0.25, min_area: 0 }
+      crack: { conf: 0.25, min_area: 0 }
+      glass_shatter: { conf: 0.25, min_area: 0 }
+      broken_part: { conf: 0.25, min_area: 0 }
+      corrosion: { conf: 0.05, min_area: 30 }
+      disjoint_part: { conf: 0.05, min_area: 200 }
     two_tier_gating:
       obj_threshold: 0.01
       cls_threshold: 0.01
