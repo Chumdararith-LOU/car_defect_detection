@@ -84,6 +84,9 @@ def run_sahi_inference(
         model_path = model_registry.get(model_name)
         if not model_path:
             continue
+        # Resolve relative paths against project root (server cwd may be backend/)
+        if not Path(model_path).is_absolute():
+            model_path = str(_PROJECT_ROOT / model_path)
         if model_name not in _CACHED_MODELS:
             _CACHED_MODELS[model_name] = AutoDetectionModel.from_pretrained(
                 model_type=SAHI_CFG.get("model_type", "yolov8"),
