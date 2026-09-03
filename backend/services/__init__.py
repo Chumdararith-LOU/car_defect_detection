@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, timezone
+from uuid import uuid4
 
 import numpy as np
 
@@ -42,7 +43,7 @@ def run_inspection(
     stage1_model = stage1_model or model
     resolved_device = resolve_device(device)
     logger.info("Resolved compute device: %s", resolved_device)
-    inspection_id = f"INSP_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    inspection_id = f"INSP_{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid4().hex[:6]}"
     timestamp = datetime.now(timezone.utc).isoformat()
     disabled_stages = [
         stage
