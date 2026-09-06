@@ -5,6 +5,10 @@ import argparse
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
+# Vendored fork (has SeesawBCE) must win over any pip-installed ultralytics
+_VENDOR = os.path.join(_PROJECT_ROOT, "vendor", "ultralytics")
+if _VENDOR not in sys.path:
+    sys.path.insert(0, _VENDOR)
 import yaml
 import mlflow
 import subprocess
