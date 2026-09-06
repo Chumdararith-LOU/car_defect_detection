@@ -46,3 +46,9 @@ logs/
 opencode.json
 skills-lock.json
 reports/
+
+*.md
+
+# Training artifacts (1.2GB+ weights and logs don't belong in git)
+runs/
+output.txt
