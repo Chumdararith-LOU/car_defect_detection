@@ -1,0 +1,37 @@
+task: segment
+loss_type: seesaw
+seesaw_p: 0.8
+seesaw_q: 2.0
+model_preset: model5_resume_adapt/model1_remapped_7class_init.pt
+
+project_name: car_defect_detection
+run_name: seesaw_copypaste
+multi_scale: false
+
+dataset_config: "data/processed/yolo_seg/data.yaml"
+epochs: 100
+imgsz: 1024
+batch_size: 8
+patience: 15
+device: 0
+workers: 8
+amp: true
+
+# Locked transfer strategy
+freeze: 23
+lr0: 0.005
+lrf: 0.01
+optimizer: AdamW
+
+augmentations:
+  hsv_h: 0.03
+  hsv_s: 0.4
+  hsv_v: 0.5
+  degrees: 15.0
+  scale: 0.2
+  perspective: 0.0005
+  fliplr: 0.5
+  mosaic: 0.0
+  mixup: 0.0
+  erasing: 0.2
+  close_mosaic: 10

@@ -1,0 +1,50 @@
+preset: balanced
+
+model_type: yolov8
+model_path: backend/models/stage2/deployed.pt
+device: auto # auto | cuda | mps | cpu
+
+sahi:
+  slice_size: 1024      # MUST match training resolution (Native Resolution Rule)
+  overlap_ratio: 0.15  # derived from O_min >= w / (2P)
+
+nms:
+  ios_threshold: 0.50  # mask Intersection-over-Smaller (thin-defect safe)
+
+presets:
+  balanced:   # ~1 false alarm per suspect car. Avoids operator alarm fatigue.
+    class_rules:
+      "0": { conf: 0.25, min_area: 0 }
+      "1": { conf: 0.25, min_area: 0 }
+      "2": { conf: 0.25, min_area: 0 }
+      "3": { conf: 0.25, min_area: 0 }
+      "4": { conf: 0.25, min_area: 0 }
+      "5": { conf: 0.15, min_area: 30 }    # corrosion
+      "6": { conf: 0.15, min_area: 200 }   # disjoint_part
+  safety:     # ~4 false alarms per suspect car. Recall-first for critical shifts.
+    class_rules:
+      "0": { conf: 0.25, min_area: 0 }
+      "1": { conf: 0.25, min_area: 0 }
+      "2": { conf: 0.25, min_area: 0 }
+      "3": { conf: 0.25, min_area: 0 }
+      "4": { conf: 0.25, min_area: 0 }
+      "5": { conf: 0.10, min_area: 30 }
+      "6": { conf: 0.10, min_area: 200 }
+  max_recall: # ~10 false alarms per suspect car. Maximum coverage.
+    class_rules:
+      "0": { conf: 0.25, min_area: 0 }
+      "1": { conf: 0.25, min_area: 0 }
+      "2": { conf: 0.25, min_area: 0 }
+      "3": { conf: 0.25, min_area: 0 }
+      "4": { conf: 0.25, min_area: 0 }
+      "5": { conf: 0.05, min_area: 30 }
+      "6": { conf: 0.05, min_area: 200 }
+  calib:      # threshold-sweep only, never ship to production
+    class_rules:
+      "0": { conf: 0.25, min_area: 0 }
+      "1": { conf: 0.25, min_area: 0 }
+      "2": { conf: 0.25, min_area: 0 }
+      "3": { conf: 0.25, min_area: 0 }
+      "4": { conf: 0.25, min_area: 0 }
+      "5": { conf: 0.05, min_area: 30 }
+      "6": { conf: 0.05, min_area: 200 }

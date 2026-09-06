@@ -1,0 +1,43 @@
+task: segment
+loss_type: focal
+fl_gamma: 2.0
+fl_alpha: 0.50
+fl_scale: 1.0
+
+model_preset: runs/segment/stage2_hardneg/hardneg_frozen_baseline/weights/best.pt
+
+project_name: stage2_hardneg
+run_name: hardneg_difflr
+
+multi_scale: false
+dataset_config: "data/processed/yolo_seg/data.yaml"
+
+epochs: 150
+imgsz: 1024
+batch_size: 4
+patience: 20
+device: 0
+workers: 8
+amp: true
+freeze: 0
+
+lr0: 0.0003
+lrf: 0.01
+optimizer: SGD
+
+differential_lr: true
+split_layer_idx: 23
+backbone_lr_mult: 0.1
+
+augmentations:
+  hsv_h: 0.03
+  hsv_s: 0.4
+  hsv_v: 0.5
+  degrees: 15.0
+  scale: 0.3
+  perspective: 0.0005
+  fliplr: 0.5
+  mosaic: 0.0
+  mixup: 0.0
+  erasing: 0.4
+  close_mosaic: 0

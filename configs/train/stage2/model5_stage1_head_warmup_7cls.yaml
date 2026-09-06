@@ -1,0 +1,40 @@
+task: segment
+loss_type: focal
+fl_gamma: 2.0
+fl_alpha: 0.50
+fl_scale: 1.0
+
+model_preset: /home/lamacpp/Documents/car_defect_detection/model5_resume_adapt/model1_remapped_7class_init.pt
+
+project_name: model5_resume_adapt_7cls
+run_name: stage1_head_warmup_7cls
+
+multi_scale: false
+
+dataset_config: "/home/lamacpp/Documents/car_defect_detection/data/processed/yolo_seg_clean_2200_7cls/dataset.yaml"
+
+epochs: 15
+imgsz: 1024
+batch_size: 4
+patience: 100
+device: 0
+workers: 8
+amp: true
+freeze: 23
+
+lr0: 0.005
+lrf: 0.01
+optimizer: SGD
+
+augmentations:
+  hsv_h: 0.03
+  hsv_s: 0.4
+  hsv_v: 0.5
+  degrees: 15.0
+  scale: 0.3
+  perspective: 0.0005
+  fliplr: 0.5
+  mosaic: 0.0
+  mixup: 0.0
+  erasing: 0.4
+  close_mosaic: 0
