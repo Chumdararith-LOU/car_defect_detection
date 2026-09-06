@@ -86,6 +86,53 @@ class FocalLoss(nn.Module):
         return loss.mean(1).sum()
 
 
+class SeesawBCE(nn.Module):
+    """Seesaw-weighted BCE for multi-label classification on imbalanced datasets.
+
+    Reweights the standard BCE with a mitigation factor (down-weights negative gradients of
+    tail classes so head classes cannot overwhelm them) and a compensation factor (up-weights
+    confident false positives). Returns element-wise loss to stay compatible with the
+    target_scores_sum normalization used by the detection losses.
+
+    Attributes:
+        p (float): Mitigation exponent; larger values suppress tail-class negative gradients more.
+        q (float): Compensation exponent; larger values punish confident false positives more.
+        eps (float): Small constant for numerical stability.
+
+    References:
+        https://arxiv.org/abs/2008.10032
+    """
+
+    def __init__(self, p: float = 0.8, q: float = 2.0, eps: float = 1e-6):
+        """Initialize SeesawBCE with mitigation and compensation exponents."""
+        super().__init__()
+        self.p = p
+        self.q = q
+        self.eps = eps
+        self.bce = nn.BCEWithLogitsLoss(reduction="none")
+        self.cum_samples = None
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """Compute seesaw-weighted BCE, returning element-wise loss with the same shape as pred."""
+        if self.cum_samples is None:
+            self.cum_samples = torch.zeros(pred.shape[-1], dtype=torch.float32, device=pred.device)
+        if self.training:
+            self.cum_samples += target.reshape(-1, target.shape[-1]).sum(0).detach()
+
+        loss = self.bce(pred, target)
+
+        # Mitigation factor: protect tail classes from head-class negative gradient dominance
+        n = self.cum_samples.clamp(min=1)
+        mitigation = ((n / n.max()) ** self.p).to(pred.dtype).view([1] * (pred.dim() - 1) + [-1])
+
+        # Compensation factor: punish confident false positives (clamped for gradient stability)
+        probs = pred.sigmoid()
+        compensation = ((probs / (1 - probs + self.eps)) ** self.q).clamp(max=5.0)
+
+        weights = torch.where(target == 0, mitigation * compensation, torch.ones_like(pred))
+        return loss * weights
+
+
 class DFLoss(nn.Module):
     """Criterion class for computing Distribution Focal Loss (DFL)."""
 
@@ -344,7 +391,14 @@ class v8DetectionLoss:
         h = model.args  # hyperparameters
 
         m = model.model[-1]  # Detect() module
-        self.bce = nn.BCEWithLogitsLoss(reduction="none")
+        # model.args may be a dict or an IterableNamespace depending on the call path.
+        _get = (lambda k: h.get(k)) if isinstance(h, dict) else (lambda k: getattr(h, k, None))
+        seesaw_p = _get("seesaw_p")
+        seesaw_q = _get("seesaw_q")
+        if seesaw_p is not None and seesaw_q is not None:
+            self.bce = SeesawBCE(p=seesaw_p, q=seesaw_q)
+        else:
+            self.bce = nn.BCEWithLogitsLoss(reduction="none")
         self.hyp = h
         self.stride = m.stride  # model strides
         self.nc = m.nc  # number of classes

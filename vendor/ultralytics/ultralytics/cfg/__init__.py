@@ -199,6 +199,8 @@ CFG_FLOAT_KEYS = frozenset(
         "box",
         "cls",
         "cls_pw",
+        "seesaw_p",
+        "seesaw_q",
         "dfl",
         "dis",
         "degrees",
