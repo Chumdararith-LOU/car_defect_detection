@@ -78,9 +78,6 @@ def main():
 
     model = YOLO(weights)
 
-    # data.yaml uses `path: .`, which ultralytics resolves against the CWD
-    os.chdir(DATASET_PATH.parent)
-
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     log_file = open(LOG_PATH, "w")
     sys.stdout, sys.stderr = Tee(sys.__stdout__, log_file), Tee(sys.__stderr__, log_file)
