@@ -8,8 +8,7 @@ DST = ROOT / "data" / "processed" / "yolo_seg_subset"
 FRACTION = 0.2
 SEED = 42
 
-YAML = """path: .
-train: images/train
+YAML = """train: images/train
 val: images/val
 names:
   0: broken_lamp

@@ -64,7 +64,12 @@ def main():
 
     v8SegmentationLoss.__init__ = patched_init
 
-    device = "mps" if torch.backends.mps.is_available() else "cpu"
+    if torch.cuda.is_available():
+        device = 0
+    elif torch.backends.mps.is_available():
+        device = "mps"
+    else:
+        device = "cpu"
     print(f"[SMOKE] device={device}, epochs=1, imgsz=1024, batch=8")
 
     model = YOLO(weights)
@@ -85,7 +90,7 @@ def main():
             workers=4,
             freeze=23,
             val=False,
-            amp=False,
+            amp=(device != "mps"),
             optimizer="AdamW",
             lr0=0.001,
             project=str(ROOT / "runs/smoke"),
