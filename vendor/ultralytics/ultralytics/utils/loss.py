@@ -130,7 +130,18 @@ class SeesawBCE(nn.Module):
         compensation = ((probs / (1 - probs + self.eps)) ** self.q).clamp(max=5.0)
 
         weights = torch.where(target == 0, mitigation * compensation, torch.ones_like(pred))
-        return loss * weights
+        weighted = loss * weights
+        if getattr(self, "seesaw_verbose", False):
+            self._verbose_count = getattr(self, "_verbose_count", 0) + 1
+            if self._verbose_count % 20 == 0:
+                print(
+                    f"[SEESAW] iter={self._verbose_count} | cum_samples={self.cum_samples.tolist()} | "
+                    f"mitigation: mean={mitigation.mean():.4f} min={mitigation.min():.4f} | "
+                    f"compensation: active_frac={(compensation > 1.0).float().mean():.3f} max={compensation.max():.3f} | "
+                    f"cls_loss_raw={loss.mean():.4f} cls_loss_weighted={weighted.mean():.4f}",
+                    flush=True,
+                )
+        return weighted
 
 
 class DFLoss(nn.Module):
