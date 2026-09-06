@@ -1,0 +1,38 @@
+task: segment
+loss_type: bce
+model_preset: model5_resume_adapt/model1_remapped_7class_init.pt
+
+# train.py surgically unfreezes layers 0-4 + head under freeze: 23
+surgical_mode: early_texture
+
+project_name: car_defect_detection
+run_name: seesaw_sweep_control_bce
+multi_scale: false
+
+# 20% stratified subset for fast hyperparameter screening
+dataset_config: "data/processed/yolo_seg_subset/data.yaml"
+epochs: 25
+imgsz: 1024
+batch_size: 8
+patience: 15
+device: 0
+workers: 8
+amp: true
+
+freeze: 23
+optimizer: AdamW
+lr0: 0.001
+lrf: 0.01
+
+augmentations:
+  hsv_h: 0.03
+  hsv_s: 0.4
+  hsv_v: 0.5
+  degrees: 15.0
+  scale: 0.2
+  perspective: 0.0005
+  fliplr: 0.5
+  mosaic: 0.0
+  mixup: 0.0
+  erasing: 0.2
+  close_mosaic: 10
