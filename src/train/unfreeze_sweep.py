@@ -1,7 +1,9 @@
 import argparse
 import csv
+import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -76,6 +78,61 @@ def write_configs(amp):
     return cfgs
 
 
+# ponytail: fixed 16GB threshold for the 24GB 4090; make it a flag if other GPUs join
+MIN_FREE_GB = 16.0
+
+
+def gpu_free_gb():
+    if not torch.cuda.is_available():
+        return None
+    free, _ = torch.cuda.mem_get_info()
+    return free / 1e9
+
+
+def wait_for_gpu(timeout_s=1800, poll_s=60):
+    free = gpu_free_gb()
+    if free is None:
+        return
+    waited = 0
+    while free is not None and free < MIN_FREE_GB:
+        if waited >= timeout_s:
+            sys.exit(
+                f"ERROR: only {free:.1f}GB GPU free after waiting {timeout_s}s (need {MIN_FREE_GB}GB). "
+                "Find the hog with nvidia-smi, kill it, then rerun with --modes <remaining>."
+            )
+        print(f"[gpu] {free:.1f}GB free < {MIN_FREE_GB}GB — waiting for VRAM (nvidia-smi shows who holds it)...")
+        time.sleep(poll_s)
+        waited += poll_s
+        free = gpu_free_gb()
+
+
+def quarantine_stale(mode):
+    # move stale dirs aside so ultralytics doesn't auto-suffix new runs with "-2"
+    for name in (mode, f"{mode}_eval"):
+        d = RUN_ROOT / name
+        if d.exists():
+            dest = RUN_ROOT / "_partials" / f"{name}_{int(time.time())}"
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            d.rename(dest)
+            print(f"[quarantine] {d.relative_to(ROOT)} -> {dest.relative_to(ROOT)}")
+
+
+def run_mode(mode, cfg, retries=1):
+    env = {**os.environ, "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"}
+    for attempt in range(retries + 1):
+        wait_for_gpu()
+        proc = subprocess.run(
+            [sys.executable, "src/train/train.py", "--config", str(cfg.relative_to(ROOT))],
+            cwd=ROOT, env=env,
+        )
+        if proc.returncode == 0 and (RUN_ROOT / mode / "results.csv").exists():
+            return True
+        print(f"FAILED: {mode} (attempt {attempt + 1}/{retries + 1})")
+        if attempt < retries:
+            quarantine_stale(mode)
+    return False
+
+
 def loss_sums(row, prefix):
     return sum(float(v) for k, v in row.items() if k.strip().startswith(prefix))
 
@@ -148,6 +205,8 @@ def write_report(results, counts):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="print commands + param counts, don't train")
+    parser.add_argument("--modes", nargs="+", choices=list(UNFREEZE_MODES),
+                        help="run only these modes (e.g. after a crash, rerun the failed ones)")
     args = parser.parse_args()
 
     self_check()
@@ -160,6 +219,8 @@ def main():
 
     amp = torch.cuda.is_available()  # true only on CUDA, matching control_bce; off on MPS/CPU
     cfgs = write_configs(amp)
+    if args.modes:
+        cfgs = {m: c for m, c in cfgs.items() if m in args.modes}
     counts = param_counts()
 
     print(f"\n{len(cfgs)} runs (amp={amp}):")
@@ -172,11 +233,8 @@ def main():
     results = []
     for mode, cfg in cfgs.items():
         print(f"\n=== STARTING: {mode} ===")
-        proc = subprocess.run(
-            [sys.executable, "src/train/train.py", "--config", str(cfg.relative_to(ROOT))],
-            cwd=ROOT,
-        )
-        if proc.returncode != 0:
+        quarantine_stale(mode)
+        if not run_mode(mode, cfg, retries=1):
             print(f"FAILED: {mode}")
         res = collect(mode) if (RUN_ROOT / mode / "results.csv").exists() else None
         results.append(res)
