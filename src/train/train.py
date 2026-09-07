@@ -20,6 +20,7 @@ from ultralytics import YOLO
 from ultralytics import settings
 from ultralytics.utils.loss import v8SegmentationLoss, E2ELoss, SeesawBCE
 from config_helpers import resolve_device
+from surgical_modes import UNFREEZE_MODES, apply_surgical_mode
 from ultralytics.models.yolo.segment import SegmentationTrainer
 import ultralytics.utils.metrics as metrics_module 
 from src.models.segment_head_with_obj import Segment26WithObjectness
@@ -552,25 +553,11 @@ def main():
             surgical_mode = cfg.get("surgical_mode", "none")
             freeze_arg = cfg.get("freeze", 0)
             
-            if surgical_mode == "early_texture":
-                head_idx = len(model.model.model) - 1
-                print(f"\n[🔪] SURGICAL FINE-TUNING: Configuring early backbone (layers 0-4) + Head (layer {head_idx})")
+            if surgical_mode in UNFREEZE_MODES:
+                print(f"\n[🔪] SURGICAL FINE-TUNING: mode={surgical_mode}")
                 # CRITICAL: Bypass Ultralytics' internal freeze logic so it doesn't overwrite our setup
-                freeze_arg = 0 
-                
-                # Manually freeze layers 5 through head_idx-1 (late backbone + neck)
-                for i in range(5, head_idx):
-                    for param in model.model.model[i].parameters():
-                        param.requires_grad = False
-                        
-                # Ensure layers 0-4 (early texture) and head are trainable
-                for i in list(range(5)) + [head_idx]:
-                    for param in model.model.model[i].parameters():
-                        param.requires_grad = True
-                
-                trainable = sum(p.numel() for p in model.model.parameters() if p.requires_grad)
-                total = sum(p.numel() for p in model.model.parameters())
-                print(f"[🔪] Trainable params: {trainable:,} / {total:,} ({100*trainable/total:.2f}%)\n")
+                freeze_arg = 0
+                apply_surgical_mode(model, surgical_mode)
             # ------------------------------------
             if use_objectness:
                 # NOTE: self.loss_names is a plain list (["Loss"]) at __init__ time, so appending
