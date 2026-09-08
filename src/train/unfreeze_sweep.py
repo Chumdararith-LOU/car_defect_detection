@@ -38,7 +38,7 @@ multi_scale: false
 dataset_config: "data/processed/yolo_seg_subset/data.yaml"
 epochs: 25
 imgsz: 1024
-batch_size: 8
+batch_size: {batch}
 patience: 10
 device: 0
 workers: 8
@@ -69,11 +69,11 @@ def param_counts():
     return {mode: apply_surgical_mode(model, mode) for mode in UNFREEZE_MODES}
 
 
-def write_configs(amp):
+def write_configs(amp, batch):
     cfgs = {}
     for mode in UNFREEZE_MODES:
         p = CFG_DIR / f"unfreeze_{mode}.yaml"
-        p.write_text(CFG_TEMPLATE.format(mode=mode, amp=str(amp).lower()))
+        p.write_text(CFG_TEMPLATE.format(mode=mode, amp=str(amp).lower(), batch=batch))
         cfgs[mode] = p
     return cfgs
 
@@ -160,7 +160,7 @@ def collect(mode):
     )
     seg = r.seg
     per_cls = {r.names[int(c)]: seg.ap50[i] for i, c in enumerate(seg.ap_class_index)}
-    return {
+    out = {
         "mode": mode,
         "mAP50": seg.map50,
         "mAP50-95": seg.map,
@@ -170,15 +170,22 @@ def collect(mode):
         "gap": train_final - val_final,
         "overfit": overfit,
     }
+    # release parent-process VRAM (CUDA context + val cache) so the next training
+    # subprocess gets the card back — holding it starved every run after the first collect()
+    del r
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return out
 
 
-def write_report(results, counts):
+def write_report(results, counts, batch):
     header = ["mode", "trainable_params", "mAP50", "mAP50-95", *CLASS_COLS,
               "train_loss_final", "val_loss_final", "overfit_gap(train-val)", "overfit_flag"]
     lines = [
         "# Backbone-unfreeze depth sweep (H1 capacity vs H2 surgical-specificity)",
         "",
-        "Fixed: bce loss, 20% subset, 25ep, imgsz 1024, batch 8, AdamW lr0=0.001, patience 10,",
+        f"Fixed: bce loss, 20% subset, 25ep, imgsz 1024, batch {batch} (grad-accum to nbs=64; comparable across cells),",
+        "AdamW lr0=0.001, patience 10,",
         f"warm-start `{CHECKPOINT.relative_to(ROOT)}`. Per-class columns = Mask mAP50.",
         "Baseline to beat: seesaw_sweep_control_bce = 0.449 Mask mAP50 (early_texture, patience 15, amp true).",
         "",
@@ -210,6 +217,8 @@ def main():
                         help="run only these modes (e.g. after a crash, rerun the failed ones)")
     parser.add_argument("--min-free-gb", type=float, default=MIN_FREE_GB,
                         help=f"VRAM headroom required before each run (default {MIN_FREE_GB})")
+    parser.add_argument("--batch", type=int, default=8,
+                        help="batch size per run; use 4 if deep-unfreeze modes OOM (grad-accum keeps effective nbs=64)")
     args = parser.parse_args()
 
     self_check()
@@ -221,7 +230,7 @@ def main():
     print(f"Checkpoint: {CHECKPOINT}")
 
     amp = torch.cuda.is_available()  # true only on CUDA, matching control_bce; off on MPS/CPU
-    cfgs = write_configs(amp)
+    cfgs = write_configs(amp, args.batch)
     if args.modes:
         cfgs = {m: c for m, c in cfgs.items() if m in args.modes}
     counts = param_counts()
@@ -234,15 +243,18 @@ def main():
         return
 
     results = []
-    for mode, cfg in cfgs.items():
-        print(f"\n=== STARTING: {mode} ===")
-        quarantine_stale(mode)
-        if not run_mode(mode, cfg, retries=1, min_free_gb=args.min_free_gb):
-            print(f"FAILED: {mode}")
+    for mode in UNFREEZE_MODES:
+        if mode in cfgs:
+            print(f"\n=== STARTING: {mode} ===")
+            quarantine_stale(mode)
+            if not run_mode(mode, cfgs[mode], retries=1, min_free_gb=args.min_free_gb):
+                print(f"FAILED: {mode}")
+        # also collect modes outside --modes that already have results, so a
+        # partial rerun doesn't clobber their rows in the report
         res = collect(mode) if (RUN_ROOT / mode / "results.csv").exists() else None
         results.append(res)
 
-    write_report(results, counts)
+    write_report(results, counts, args.batch)
 
 
 if __name__ == "__main__":
