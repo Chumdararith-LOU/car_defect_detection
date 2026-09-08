@@ -78,8 +78,9 @@ def write_configs(amp):
     return cfgs
 
 
-# ponytail: fixed 16GB threshold for the 24GB 4090; make it a flag if other GPUs join
-MIN_FREE_GB = 16.0
+# ponytail: conservative floor, not a measured requirement — this workload (batch 8 @
+# 1024px, yolo26m-seg) needs roughly 8-12GB; override with --min-free-gb on shared cards
+MIN_FREE_GB = 10.0
 
 
 def gpu_free_gb():
@@ -89,18 +90,18 @@ def gpu_free_gb():
     return free / 1e9
 
 
-def wait_for_gpu(timeout_s=1800, poll_s=60):
+def wait_for_gpu(min_free_gb=MIN_FREE_GB, timeout_s=1800, poll_s=60):
     free = gpu_free_gb()
     if free is None:
         return
     waited = 0
-    while free is not None and free < MIN_FREE_GB:
+    while free is not None and free < min_free_gb:
         if waited >= timeout_s:
             sys.exit(
-                f"ERROR: only {free:.1f}GB GPU free after waiting {timeout_s}s (need {MIN_FREE_GB}GB). "
-                "Find the hog with nvidia-smi, kill it, then rerun with --modes <remaining>."
+                f"ERROR: only {free:.1f}GB GPU free after waiting {timeout_s}s (need {min_free_gb}GB). "
+                "Find the hog with nvidia-smi, kill it, lower --min-free-gb, then rerun with --modes <remaining>."
             )
-        print(f"[gpu] {free:.1f}GB free < {MIN_FREE_GB}GB — waiting for VRAM (nvidia-smi shows who holds it)...")
+        print(f"[gpu] {free:.1f}GB free < {min_free_gb}GB — waiting for VRAM (nvidia-smi shows who holds it)...")
         time.sleep(poll_s)
         waited += poll_s
         free = gpu_free_gb()
@@ -117,10 +118,10 @@ def quarantine_stale(mode):
             print(f"[quarantine] {d.relative_to(ROOT)} -> {dest.relative_to(ROOT)}")
 
 
-def run_mode(mode, cfg, retries=1):
+def run_mode(mode, cfg, retries=1, min_free_gb=MIN_FREE_GB):
     env = {**os.environ, "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"}
     for attempt in range(retries + 1):
-        wait_for_gpu()
+        wait_for_gpu(min_free_gb=min_free_gb)
         proc = subprocess.run(
             [sys.executable, "src/train/train.py", "--config", str(cfg.relative_to(ROOT))],
             cwd=ROOT, env=env,
@@ -207,6 +208,8 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="print commands + param counts, don't train")
     parser.add_argument("--modes", nargs="+", choices=list(UNFREEZE_MODES),
                         help="run only these modes (e.g. after a crash, rerun the failed ones)")
+    parser.add_argument("--min-free-gb", type=float, default=MIN_FREE_GB,
+                        help=f"VRAM headroom required before each run (default {MIN_FREE_GB})")
     args = parser.parse_args()
 
     self_check()
@@ -234,7 +237,7 @@ def main():
     for mode, cfg in cfgs.items():
         print(f"\n=== STARTING: {mode} ===")
         quarantine_stale(mode)
-        if not run_mode(mode, cfg, retries=1):
+        if not run_mode(mode, cfg, retries=1, min_free_gb=args.min_free_gb):
             print(f"FAILED: {mode}")
         res = collect(mode) if (RUN_ROOT / mode / "results.csv").exists() else None
         results.append(res)
