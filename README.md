@@ -1,8 +1,165 @@
 # Car Defect Detection
 
-Automated car defect detection pipeline using computer vision and deep learning.
+> Multi-stage automated visual inspection pipeline for detecting, segmenting,
+> and assessing car body defects. Built for automotive quality control and
+> insurance damage assessment.
 
-## 🚀 Quickstart (Clone & Run)
+## Architecture (4-Stage Pipeline)
+
+| Stage | Name | Function | Model |
+|---|---|---|---|
+| 1 | Pre-Screener | Binary saliency detector; routes clean cars to PASS | SOD (binary) |
+| 2 | Defect Segmentation | Multi-class instance segmentation (7 defect types) | YOLOv8-seg |
+| 3 | Panel Mapping | Assigns defects to specific car panels | Panel-seg model |
+| 4 | Fusion & Severity | Computes IoD and Damage Severity Index (DSI) | Rule-based |
+
+## Defect Taxonomy (7 Classes)
+
+| ID | Class | Description |
+|---|---|---|
+| 0 | broken_lamp | Damaged or missing headlight/taillight |
+| 1 | corrosion | Rust or oxidized metal patches |
+| 2 | crack | Surface cracks in body panels or glass |
+| 3 | dent | Dents and deformations |
+| 4 | disjoint_part | Detached or misaligned components |
+| 5 | glass_shatter | Shattered or broken glass |
+| 6 | scratch | Scratches and paint damage |
+
+## Dataset
+
+- Sources: CarDD_COCO, car_defect_2000/2200, Roboflow exports, clean-car pool
+- Unified 7-class taxonomy with alphabetical ordering
+- ~6,366 training images, ~1,018 val, ~593 test
+- 999 clean-car training images (empty labels) + 150 clean-eval images
+- Labels: YOLO segmentation format in data/processed/yolo_seg_clean/
+
+## Repository Structure
+
+```
+.
+├── AGENTS.md
+├── README.md
+├── archive
+│   ├── INVENTORY.md
+│   ├── experiment_configs
+│   ├── experiment_scripts
+│   └── pre_standardization
+├── backend
+│   ├── api
+│   ├── core
+│   ├── data
+│   ├── main.py
+│   ├── models
+│   ├── schemas
+│   └── services
+├── configs
+│   ├── data
+│   ├── inference
+│   ├── matrix_test.yaml
+│   ├── models
+│   ├── pipeline_config.yaml
+│   ├── quant
+│   └── train
+├── data
+│   ├── calibration
+│   ├── calibration.dvc
+│   ├── processed
+│   ├── raw
+│   ├── raw.dvc
+│   ├── results
+│   └── training_jobs.db
+├── docs
+│   ├── Consolidated Project Report.md
+│   ├── Proposal.md
+│   ├── Stage 2 Training Platform.md
+│   ├── WORKSPACE_REPORT.md
+│   ├── architecture.md
+│   ├── champion_manifest.md
+│   ├── champion_manifest_verified.md
+│   ├── host_detection_spec.md
+│   ├── master_plan.md
+│   ├── reports
+│   └── workspace_cleanup_plan.md
+├── fig
+│   ├── four_pillars.png
+│   ├── objectness_weights.png
+│   └── routing_winners.png
+├── frontend
+│   ├── AGENTS.md
+│   ├── DESIGN_AUDIT.md
+│   ├── FRONTEND_REPORT.md
+│   ├── WORKSPACE_REPORT.md
+│   ├── bun.lock
+│   ├── bunfig.toml
+│   ├── components.json
+│   ├── eslint.config.js
+│   ├── images
+│   ├── opencode.json
+│   ├── package.json
+│   ├── plan.md
+│   ├── skills-lock.json
+│   ├── src
+│   ├── tsconfig.json
+│   └── vite.config.ts
+├── opencode.json
+├── reports
+│   ├── benchmark_results
+│   ├── figures
+│   ├── inspection-tab-analysis.md
+│   ├── inspection_tab_backend_report.md
+│   ├── operator_guide.md
+│   ├── slides
+│   └── system_guide.md
+├── requirements-dev.txt
+├── requirements.txt
+├── server.log
+├── skills-lock.json
+├── src
+│   ├── stage1
+│   ├── stage2
+│   ├── stage3
+│   └── stage4
+├── tests
+│   ├── __init__.py
+│   ├── smoke_test_focal.py
+│   └── test_data.py
+└── tools
+    ├── eval_rare_thresholds.py
+    ├── video_stage2_live.py
+    └── xray_diag.py
+
+42 directories, 51 files
+```
+
+## Training
+
+Stage 2 configs: configs/train/stage2/
+- Stage2-training.yaml (main production config)
+- objectness_branch.yaml (production model)
+- model5_stage1_head_warmup_7cls_extended.yaml (baseline_m5)
+
+Key training decisions:
+- Loss: Plain BCE (Seesaw Loss was tested and rejected — BCE control outperformed)
+- Fine-tuning: Surgical early_texture mode (unfreeze layers 0-4 + head)
+- Optimizer: AdamW, lr0=0.001
+- Image size: 1024x1024
+
+## Inference (SAHI Pipeline)
+
+Production inference uses Slicing Aided Hyper Inference (SAHI):
+- Slice size: 1024x1024, overlap: 15%
+- NMS: Mask-IoS, threshold 0.50
+- Device: MPS (Apple Metal) or CUDA
+- Multi-model routing: balanced / safety / max_recall presets
+
+## Production Model Registry
+
+| Preset | Model | Role |
+|---|---|---|
+| objectness_branch_new | Best overall | Primary detector |
+| baseline_m5 | Head-class specialist | Safety preset routing |
+
+## Quickstart (Clone & Run)
 
 ### Prerequisites
 
@@ -78,37 +235,3 @@ http://localhost:8010
 ```
 
 ---
-
-## Architecture Overview
-
-The project is organized into separate components for model inference, backend services, frontend development, and supporting scripts.
-
-### Backend
-
-The backend provides the API and inference services used by the frontend.
-
-### Frontend
-
-The frontend provides the user interface for interacting with the defect detection pipeline.
-
-### Models
-
-Champion model weights are managed through Git LFS and prepared for deployment using:
-
-```bash
-python scripts/setup_models.py
-```
-
-### Development
-
-Development dependencies are listed separately in:
-
-```text
-requirements-dev.txt
-```
-
-Install them with:
-
-```bash
-pip install -r requirements-dev.txt
-```
