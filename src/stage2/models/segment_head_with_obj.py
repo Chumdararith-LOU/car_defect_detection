@@ -92,10 +92,13 @@ class Segment26WithObjectness(Segment26):
             nc = self.nc
             # Convert objectness logits to probabilities and reshape for broadcasting: (bs, N, 1)
             obj_probs = obj_logits.transpose(1, 2).sigmoid()
+            # Stashed so analysis scripts can read raw per-anchor objectness
+            self.last_obj_probs = obj_probs
 
             # Multiply the class scores (indices 4 to 4+nc) by the objectness probability
             # This acts as your two-tier gating: final_score = P(class) * P(object)
-            preds[:, :, 4 : 4 + nc] = preds[:, :, 4 : 4 + nc] * obj_probs
+            if not getattr(self, "disable_obj_gate", False):
+                preds[:, :, 4 : 4 + nc] = preds[:, :, 4 : 4 + nc] * obj_probs
 
         # Return standard Ultralytics Segment inference format: (decoded_preds, proto)
         return preds, proto
