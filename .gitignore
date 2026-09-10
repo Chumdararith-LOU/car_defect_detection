@@ -40,25 +40,28 @@ Thumbs.db
 # Logs
 *.log
 logs/
+server.log
 
-minio_data/
-mlflow.db
-_build/
+# ML experiment tracking
+.dvc/tmp/
 
-runs/
+# Environment
+.env
+.env.example
+.DS_Store
+Thumbs.db
 
-src/Diagnost/
-src/stage2/data/EDA_spliting.ipynb
+# Agent/tool configs
+opencode.json
 
-AGENTS.md
-.opencode
+# Python caches
+.pytest_cache/
 
 # Stage 3 local simulation artifacts
 data/processed/stage3/car_damages_panel/
 data/processed/stage3/car_damages_panel_smoke/
 mlflow_local.db
 /*.pt
-
 
 reports/*
 
