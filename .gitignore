@@ -73,6 +73,10 @@ skills-lock.json
 .env
 .pytest_cache/
 
+# Opencode and runs dirs
+.opencode/
+runs/
+
 # Archive is tracked for inventory but large binaries inside are not
 archive/
 
