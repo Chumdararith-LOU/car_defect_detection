@@ -1,0 +1,50 @@
+# Stage 2 Evaluation Benchmark Configuration
+# Modes: benchmark | clean_fpr | latency | memory | full
+# Usage: python -m src.stage2.eval.evaluate --config configs/eval/stage2_benchmark.yaml
+
+mode: full
+
+project_name: car_defect_eval
+run_name: model_comparison_v1
+
+# Models to compare (benchmark mode)
+models:
+  - name: objectness_branch
+    weights: runs/segment/seesaw_surgical_objectness-26/weights/best.pt
+  - name: seesaw_surgical_early
+    weights: runs/segment/seesaw_surgical_early/weights/best.pt
+  - name: baseline_bce
+    weights: runs/segment/stage1_head_warmup_7cls_extended/weights/best.pt
+
+# Dataset paths
+data:
+  test: data/processed/yolo_seg_clean/data.yaml
+  clean_images: data/processed/clean_cars/images/clean_eval/
+  clean_count: 150
+
+# SAHI tiling configuration (Module 8: patch size MUST match training resolution)
+sahi:
+  enabled: true
+  slice_size: 1024
+  overlap_ratio: 0.15
+  postprocess_match_metric: IOS    # Module 10: IOS for thin scratches
+  postprocess_match_threshold: 0.50
+
+# Inference parameters
+inference:
+  conf_threshold: 0.25
+  imgsz: 1024
+  device: auto                     # cuda > mps > cpu
+  amp: false                       # avoid NaN on MPS
+
+# Size bucketing thresholds (area in pixels²)
+# Commandment #1: Aggregate metrics lie for rare events
+size_buckets:
+  small_max: 1024                  # 32x32
+  medium_max: 9216                 # 96x96
+
+# Output
+output:
+  report_dir: reports/eval/
+  log_to_mlflow: true
+  save_json: true

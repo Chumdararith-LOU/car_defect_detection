@@ -1,0 +1,36 @@
+# Clean Image FPR Test Configuration
+# Tests false positive rate on defect-free images
+# Usage: python -m src.stage2.eval.evaluate --config configs/eval/clean_images.yaml
+
+mode: clean_fpr
+
+project_name: car_defect_eval
+run_name: clean_fpr_test
+
+models:
+  - name: objectness_branch
+    weights: runs/segment/seesaw_surgical_objectness-26/weights/best.pt
+  - name: baseline_bce
+    weights: runs/segment/stage1_head_warmup_7cls_extended/weights/best.pt
+
+data:
+  clean_images: data/processed/clean_cars/images/clean_eval/
+  clean_count: 150
+
+sahi:
+  enabled: true
+  slice_size: 1024
+  overlap_ratio: 0.15
+  postprocess_match_metric: IOS
+  postprocess_match_threshold: 0.50
+
+inference:
+  conf_threshold: 0.25
+  imgsz: 1024
+  device: auto
+  amp: false
+
+output:
+  report_dir: reports/eval/
+  log_to_mlflow: true
+  save_json: true
