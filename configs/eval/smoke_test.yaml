@@ -1,0 +1,39 @@
+# Smoke test configuration for evaluation harness verification
+# Uses the dummy_dataset created during training smoke test
+
+mode: full
+
+project_name: car_defect_eval
+run_name: eval_smoke_test
+
+# Use the model weights from training smoke test
+models:
+  - name: smoke_test_model
+    weights: runs/segment/car_defect_detection/yolo26m_1024_stage2_baseline-8/weights/best.pt
+
+# Use dummy dataset (train split used as test for smoke test)
+data:
+  test: dummy_dataset/data.yaml
+  clean_images: dummy_dataset/images/train/
+  clean_count: 4
+
+# SAHI disabled for smoke test (faster)
+sahi:
+  enabled: false
+  slice_size: 128
+  overlap_ratio: 0.15
+  postprocess_match_metric: IOS
+  postprocess_match_threshold: 0.50
+
+# Inference parameters (small for smoke test)
+inference:
+  conf_threshold: 0.10
+  imgsz: 128
+  device: auto
+  amp: false
+
+# Output
+output:
+  report_dir: reports/eval/
+  log_to_mlflow: false
+  save_json: true
