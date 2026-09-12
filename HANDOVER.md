@@ -1,8 +1,8 @@
 # Handover Notes
 
-> Last updated: 2026-07-11
+> Last updated: 2026-09-11
 > Branch: cleanup/workspace-refactor
-> Status: Production model deployed; repository cleaned for handover.
+> Status: Production model deployed; evaluation harness complete; repository cleaned for handover.
 
 ## Key Results Summary
 
@@ -67,14 +67,91 @@
 4. SAHI training integration: train on slices, not just infer on them.
 5. Panel segmentation: Stage 3 is still under development.
 
-## File Index (for quick reference)
+## Evaluation Pipeline (Stage 2)
+
+The Stage 2 evaluation harness provides comprehensive model assessment:
+
+### Usage
+
+```bash
+# Full evaluation with all metrics
+python -m src.stage2.eval.evaluate --config configs/eval/stage2_benchmark.yaml
+
+# Specific mode
+python -m src.stage2.eval.evaluate --config configs/eval/stage2_benchmark.yaml --mode clean_fpr
+
+# Single model evaluation
+python -m src.stage2.eval.evaluate --config configs/eval/stage2_benchmark.yaml --model path/to/weights.pt
+```
+
+### Metrics Computed
+
+| Category | Metrics | Module |
+|---|---|---|
+| Accuracy | Per-class P/R/F1/AP50 | `metrics/classwise.py` |
+| Size Analysis | Small/Medium/Large AP & Recall | `metrics/size_bucketed.py` |
+| Production FPR | False positives on clean images | `metrics/clean_fpr.py` |
+| Latency | Preprocess/Inference/NMS timing | `perf/latency.py` |
+| Memory | Peak VRAM/RAM | `perf/memory.py` |
+
+### Key Design Decisions
+
+1. **Size-bucketed metrics** (Commandment #1): Aggregate mAP hides small-object failures. We report AP separately for small (<32²), medium (32²-96²), and large (>96²) objects.
+
+2. **Clean FPR as production metric**: A model that hallucinates on clean cars erodes operator trust. We measure FPR on 150 defect-free images.
+
+3. **NMS with IOS metric**: Thin boxes (scratches) have low IoU even for duplicates. IOS (Intersection over Smaller) correctly merges them.
+
+4. **SAHI tiling at inference**: Patch size MUST match training resolution (1024×1024). Mismatched resolution causes silent performance degradation.
+
+### Evaluation Configs
+
+| Config | Purpose |
+|---|---|
+| `configs/eval/stage2_benchmark.yaml` | Multi-model comparison |
+| `configs/eval/clean_images.yaml` | FPR-focused testing |
+| `configs/eval/smoke_test.yaml` | End-to-end verification |
+
+## Evaluation Pipeline (Stage 3)
+
+Stage 3 (Panel Segmentation) evaluation is under development. The planned approach:
+
+1. **Panel-level metrics**: IoU between predicted and ground-truth panel masks
+2. **Defect-to-panel assignment accuracy**: Percentage of defects correctly assigned to panels
+3. **Integration test**: Full pipeline (Stage 2 → Stage 3 → Stage 4) accuracy
+
+## Updated File Index
 
 | Path | What it is |
 |---|---|
-| configs/train/stage2/Stage2-training.yaml | Main production training config |
-| configs/train/stage2/objectness_branch.yaml | Objectness branch model config |
-| vendor/ultralytics/ | Forked Ultralytics 8.4.90 with custom modifications |
-| data/processed/yolo_seg_clean/ | Unified 7-class dataset (YOLO format) |
-| data/processed/clean_cars/ | Clean-car pool (train + eval) |
-| archive/experiment_configs/ | Archived superseded experiment configs |
-| archive/experiment_scripts/ | Archived dead experiment scripts |
+| `configs/train/stage2/Stage2-training.yaml` | Main production training config |
+| `configs/train/stage2/objectness_branch.yaml` | Objectness branch model config |
+| `configs/eval/stage2_benchmark.yaml` | Evaluation benchmark config |
+| `src/train/train.py` | Training entry point |
+| `src/stage2/eval/evaluate.py` | Evaluation entry point |
+| `src/stage2/eval/sahi_eval.py` | SAHI inference wrapper |
+| `src/stage2/eval/metrics/classwise.py` | Per-class metrics |
+| `src/stage2/eval/metrics/size_bucketed.py` | Size-bucketed metrics |
+| `src/stage2/eval/metrics/clean_fpr.py` | Clean FPR metrics |
+| `src/stage2/eval/perf/latency.py` | Latency profiling |
+| `src/stage2/eval/perf/memory.py` | Memory profiling |
+| `src/stage2/eval/report.py` | Report generation |
+| `src/models/losses.py` | Custom loss functions |
+| `src/models/segment_head_with_obj.py` | Objectness head |
+| `vendor/ultralytics/MODIFICATIONS.md` | Fork documentation |
+| `data/processed/yolo_seg_clean/` | Unified 7-class dataset |
+| `data/processed/clean_cars/` | Clean-car pool |
+| `archive/experiment_configs/` | Archived superseded configs |
+| `archive/experiment_scripts/` | Archived dead scripts |
+
+## Lessons Learned (Evaluation)
+
+1. **Aggregate metrics lie for rare events** — Always check size-bucketed recall, not just mAP.
+
+2. **Clean FPR is the production killer** — A model with 90% recall but 40% FPR will be rejected by operators.
+
+3. **SAHI patch size must match training resolution** — Mismatched resolution looks like under-training but is actually an inference config bug.
+
+4. **IOS beats IoU for thin boxes** — Scratches have low IoU even for duplicates. Use IOS for NMS.
+
+5. **Latency budget is 500ms** — 48 patches × ~8ms + 50ms NMS. Exceeding this breaks the production constraint.
