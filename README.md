@@ -235,3 +235,153 @@ http://localhost:8010
 ```
 
 ---
+
+## Evaluation
+
+### Quick Evaluation
+
+```bash
+python -m src.stage2.eval.evaluate --config configs/eval/stage2_benchmark.yaml
+```
+
+### Evaluation Modes
+
+| Mode | Description |
+|---|---|
+| `benchmark` | Per-class mAP, precision, recall, size-bucketed metrics |
+| `clean_fpr` | False positive rate on clean (defect-free) images |
+| `latency` | Inference timing (preprocess/inference/NMS) |
+| `memory` | Peak VRAM/RAM usage |
+| `full` | Run all modes |
+
+### Multi-Model Comparison
+
+```bash
+python -m src.stage2.eval.evaluate --config configs/eval/stage2_benchmark.yaml --mode full
+```
+
+This generates comparison reports in `reports/eval/` with:
+- Markdown report for human reading
+- JSON results for CI/regression checks
+- Optional MLflow logging
+
+### Evaluation Modules
+
+```
+src/stage2/eval/
+├── evaluate.py          # Single CLI entry point
+├── sahi_eval.py         # SAHI inference + NMS-IOS
+├── report.py            # Report generation
+├── metrics/
+│   ├── classwise.py     # Per-class P/R/F1/AP
+│   ├── size_bucketed.py # Small/Medium/Large breakdown
+│   └── clean_fpr.py     # Production hallucination rate
+└── perf/
+    ├── latency.py       # Timing instrumentation
+    └── memory.py        # VRAM/RAM tracking
+```
+
+## Training
+
+### Quick Training Run
+
+```bash
+python src/train/train.py --config configs/train/stage2/Stage2-training.yaml
+```
+
+### Training with Objectness Branch
+
+```bash
+python src/train/train.py --config configs/train/stage2/objectness_branch.yaml
+```
+
+### Key Training Parameters
+
+| Parameter | Value | Description |
+|---|---|---|
+| loss_type | bce | Default loss (Seesaw was rejected) |
+| imgsz | 1024 | Training image size |
+| optimizer | AdamW | Recommended for fine-tuning |
+| lr0 | 0.001 | Initial learning rate |
+| surgical_mode | early_texture | Unfreeze layers 0-4 + head |
+
+### Training Configs
+
+| Config | Purpose |
+|---|---|
+| `configs/train/stage2/Stage2-training.yaml` | Main production training |
+| `configs/train/stage2/objectness_branch.yaml` | Objectness branch model |
+| `configs/train/stage2/model5_stage1_head_warmup_7cls_extended.yaml` | Baseline reference |
+
+## Inference (SAHI Pipeline)
+
+Production inference uses Slicing Aided Hyper Inference (SAHI):
+
+| Parameter | Value | Description |
+|---|---|---|
+| slice_size | 1024 | Patch size in pixels |
+| overlap_ratio | 0.15 | Overlap between patches |
+| NMS metric | IOS | Intersection over Smaller (for thin boxes) |
+| NMS threshold | 0.50 | Suppression threshold |
+
+```bash
+# Run SAHI inference on an image
+python src/stage2/inference/sahi_inference.py --image path/to/image.jpg --weights runs/segment/best.pt
+```
+
+## Production Model Registry
+
+| Preset | Model | Role |
+|---|---|---|
+| objectness_branch_new | Best overall | Primary detector |
+| baseline_m5 | Head-class specialist | Safety preset routing |
+| surgical_early | Texture specialist | Corrosion detection |
+
+## Repository Structure
+
+```
+car_defect_detection/
+├── README.md                    # This file
+├── HANDOVER.md                  # Experiment history + lessons
+├── requirements.txt             # Production dependencies
+├── requirements-dev.txt         # Dev dependencies
+├── .env.example                 # Environment template
+├── configs/
+│   ├── data/                    # Dataset configs
+│   ├── train/                   # Training configs
+│   ├── eval/                    # Evaluation configs
+│   └── inference/               # Inference configs
+├── src/
+│   ├── models/                  # Custom model components
+│   │   ├── heads.py             # Segment26WithObjectness
+│   │   ├── losses.py            # ScaledFocalBCE, SeesawBCE
+│   │   └── segment_head_with_obj.py
+│   ├── train/                   # Training pipeline
+│   ├── stage1/                  # SOD pre-screener
+│   ├── stage2/                  # Defect segmentation
+│   │   ├── eval/                # Evaluation harness
+│   │   ├── inference/           # SAHI inference
+│   │   └── train/               # Training scripts
+│   ├── stage3/                  # Panel segmentation
+│   └── stage4/                  # Fusion & severity
+├── vendor/
+│   └── ultralytics/             # Forked Ultralytics (see MODIFICATIONS.md)
+├── backend/                     # FastAPI server
+├── frontend/                    # Web UI
+├── scripts/                     # Utility scripts
+├── data/                        # Dataset (gitignored)
+├── runs/                        # Training outputs (gitignored)
+└── reports/                     # Evaluation reports
+```
+
+## Critical Warnings
+
+1. **Do NOT run `pip install ultralytics`** — it will overwrite the vendored fork. Use `pip install -e vendor/ultralytics` instead.
+
+2. **Seesaw Loss was REJECTED** — Plain BCE outperformed all Seesaw configurations by >2×. Use `loss_type: bce` as default.
+
+3. **Class ordering is ALPHABETICAL** — 0:broken_lamp, 1:corrosion, 2:crack, 3:dent, 4:disjoint_part, 5:glass_shatter, 6:scratch.
+
+4. **Corrosion is the HEAD class** (13,961 instances) — It's a texture/feature-learning problem, not a rare-class problem. Surgical fine-tuning of early layers is the solution.
+
+5. **MPS (MacBook) does NOT support amp=True** — Use `amp: false` on MacBook to avoid NaN divergence.
