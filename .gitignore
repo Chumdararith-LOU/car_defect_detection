@@ -80,6 +80,33 @@ runs/
 # Archive is tracked for inventory but large binaries inside are not
 archive/
 
+# === Python caches ===
+__pycache__/
+*.py[cod]
+*.pyc
+
+# === Model weights (re-downloadable) ===
+*.pt
+*.onnx
+*.engine
+!runs/**/weights/*.pt
+
+# === Test artifacts ===
+dummy_dataset/
+smoke_test.yaml
+
+# === Logs & tracking ===
+server.log
+mlruns/
+*.log
+
+# === Tool configs ===
+opencode.json
+skills-lock.json
+
+# === OS ===
+.DS_Store
+
 # Local review database — never commit
 backend/data/*.db
 
