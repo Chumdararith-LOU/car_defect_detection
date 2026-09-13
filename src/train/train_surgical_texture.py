@@ -98,7 +98,9 @@ def main():
     print("[*] Applying surgical freeze to deep backbone (layers 5-22)...")
     trainable_params = apply_surgical_texture_freeze(model.model)
     
-    assert trainable_params == 9_200_000, (
+    # Expected ~9.2M trainable params (early texture 0-4 + head 23)
+    # Actual: 9,229,449 for yolo26m-seg with 7 classes
+    assert 9_000_000 < trainable_params < 9_500_000, (
         f"Expected ~9.2M trainable params, got {trainable_params:,}. "
         f"Check layer mapping: early_texture (0-4) + head (23)"
     )
