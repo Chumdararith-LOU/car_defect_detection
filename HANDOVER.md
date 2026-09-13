@@ -155,3 +155,21 @@ Stage 3 (Panel Segmentation) evaluation is under development. The planned approa
 4. **IOS beats IoU for thin boxes** — Scratches have low IoU even for duplicates. Use IOS for NMS.
 
 5. **Latency budget is 500ms** — 48 patches × ~8ms + 50ms NMS. Exceeding this breaks the production constraint.
+
+## Inference Pipeline — Objectness Head Registration
+
+Stage 2 inference uses SAHI via `src/stage2/inference/sahi_inference.py`.
+
+Models trained with the objectness branch (e.g., `objectness_branch_new`,
+`seesaw_surgical_objectness-26`) use the custom `Segment26WithObjectness` head.
+To load these models for inference, the head class must be registered into
+Ultralytics before deserialization.
+
+`sahi_inference.py` does this automatically at import time: it registers
+`Segment26WithObjectness` into `ultralytics.nn.modules.head` and
+`ultralytics.nn.tasks`, mirroring the registration in `src/stage2/train/train.py`.
+
+**Why this matters:** Without this registration, loading an objectness-trained
+model would fail or silently drop the objectness branch. This registration
+preserves the champion model's objectness branch (which reduced clean-image FPR
+from 40.94% to 35.43%) during inference.
