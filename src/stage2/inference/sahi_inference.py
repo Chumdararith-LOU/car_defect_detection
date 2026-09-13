@@ -12,9 +12,31 @@ passed at runtime). The industrial UI may override them per shift.
 
 import cv2
 import numpy as np
+import os
+import sys
 import yaml
 from sahi import AutoDetectionModel
 from sahi.predict import get_sliced_prediction
+
+# --- Objectness head registration (required to load objectness-trained models) ---
+# Mirrors src/stage2/train/train.py so models trained with Segment26WithObjectness
+# can be deserialized at inference time.
+_PROJECT_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..")
+)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+_VENDOR = os.path.join(_PROJECT_ROOT, "vendor", "ultralytics")
+if _VENDOR not in sys.path:
+    sys.path.insert(0, _VENDOR)
+
+from src.models.segment_head_with_obj import Segment26WithObjectness  # noqa: E402
+import ultralytics.nn.modules.head as _head_mod  # noqa: E402
+import ultralytics.nn.tasks as _tasks_mod  # noqa: E402
+
+_head_mod.Segment26WithObjectness = Segment26WithObjectness
+_tasks_mod.Segment26WithObjectness = Segment26WithObjectness
+# --- End objectness head registration ---
 
 CLASS_NAMES = {
     0: "dent",
