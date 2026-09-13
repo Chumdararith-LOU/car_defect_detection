@@ -52,3 +52,7 @@ reports/
 # Training artifacts (1.2GB+ weights and logs don't belong in git)
 runs/
 output.txt
+
+# Model weights (large binary files)
+*.pt
+yolo*.pt
