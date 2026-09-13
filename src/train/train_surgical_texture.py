@@ -27,6 +27,7 @@ from ultralytics.utils.torch_utils import unwrap_model
 
 def apply_surgical_texture_freeze(model):
     """Freeze deep backbone (layers 5-22), keep early texture (0-4) and head (23) trainable."""
+    # model.model is a torch.nn.Sequential from parse_model()
     layers = model.model
     
     NUM_LAYERS = 24
@@ -95,8 +96,7 @@ def main():
     model = YOLO(args.weights)
     
     print("[*] Applying surgical freeze to deep backbone (layers 5-22)...")
-    unwrap_model(model)
-    trainable_params = apply_surgical_texture_freeze(model)
+    trainable_params = apply_surgical_texture_freeze(model.model)
     
     assert trainable_params == 9_200_000, (
         f"Expected ~9.2M trainable params, got {trainable_params:,}. "
