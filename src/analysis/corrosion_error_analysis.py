@@ -557,7 +557,8 @@ def main():
     print("=" * 80)
     
     # Paths (relative to project root)
-    model_path = "runs/segment/car_defect_detection/seesaw_surgical_texture_refined/weights/best.pt"
+    # Training output went to runs/segment/runs/segment/... (nested path)
+    model_path = "runs/segment/runs/segment/car_defect_detection/seesaw_surgical_texture_refined/weights/best.pt"
     images_dir = "data/processed/yolo_seg/images/test"
     labels_dir = "data/processed/yolo_seg/labels/test"
     output_dir = "reports/corrosion_error_analysis"
