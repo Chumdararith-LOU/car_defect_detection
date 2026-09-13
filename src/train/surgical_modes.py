@@ -17,7 +17,7 @@ UNFREEZE_MODES = {
 def apply_surgical_mode(model, mode):
     """Freeze/unfreeze model layers per UNFREEZE_MODES[mode]. Idempotent:
     every layer's requires_grad is set from the mode's set on each call."""
-    layers = model.model.model
+    layers = model.model
     if len(layers) != NUM_LAYERS:
         raise ValueError(f"mode '{mode}' expects {NUM_LAYERS} layers, model has {len(layers)}")
     unfreeze = UNFREEZE_MODES[mode]

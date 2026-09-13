@@ -125,7 +125,16 @@ class BaseTrainer:
             _callbacks (dict, optional): Dictionary of callback functions.
         """
         self.hub_session = overrides.pop("session", None)  # HUB
+        # Extract custom loss parameters before get_cfg validation
+        loss_params = {}
+        if overrides:
+            for key in ("loss_type", "fl_gamma", "fl_alpha", "fl_scale", "seesaw_p", "seesaw_q", "use_objectness", "obj_loss_weight"):
+                if key in overrides:
+                    loss_params[key] = overrides.pop(key)
         self.args = get_cfg(cfg, overrides)
+        # Inject custom loss parameters for native loss injection
+        for key, value in loss_params.items():
+            setattr(self.args, key, value)
         self.check_resume(overrides)
         self.args.device = parse_device(self.args.device)  # canonical string, resolves '-1' auto-selection once
         self.device = select_device(self.args.device)
@@ -208,6 +217,11 @@ class BaseTrainer:
 
     def run_callbacks(self, event: str):
         """Run all existing callbacks associated with a particular event."""
+        if event == "on_before_build_optimizer":
+            print(f"\n{'='*80}", flush=True)
+            print(f"[TRAINER DEBUG] run_callbacks called: event={event}", flush=True)
+            print(f"[TRAINER DEBUG] callbacks for {event}: {self.callbacks.get(event, [])}", flush=True)
+            print(f"{'='*80}\n", flush=True)
         for callback in self.callbacks.get(event, []):
             callback(self)
 
@@ -366,7 +380,13 @@ class BaseTrainer:
         if self.batch_size < 1 and RANK == -1:  # single-GPU only, estimate best batch size
             self.args.batch = self.batch_size = self.auto_batch()
 
+        self.stopper, self.stop = EarlyStopping(patience=self.args.patience), False
+        self.resume_training(ckpt)
         self._build_train_pipeline()
+        self.run_callbacks("on_before_build_optimizer")
+        # Re-initialize scheduler after callback (which may rebuild optimizer)
+        if hasattr(self, 'scheduler') and self.scheduler is not None:
+            self.scheduler.last_epoch = self.start_epoch - 1  # do not move
         self.validator = self.get_validator()
         if self.args.distill_model is not None and "dis_loss" not in self.loss_names:
             self.loss_names += ("dis_loss",)
@@ -377,10 +397,6 @@ class BaseTrainer:
             self.metrics = dict(zip(metric_keys, [0] * len(metric_keys)))
             if self.args.plots:
                 self.plot_training_labels()
-
-        self.stopper, self.stop = EarlyStopping(patience=self.args.patience), False
-        self.resume_training(ckpt)
-        self.scheduler.last_epoch = self.start_epoch - 1  # do not move
         self.run_callbacks("on_pretrain_routine_end")
 
     def _do_train(self):
@@ -452,12 +468,21 @@ class BaseTrainer:
                 try:
                     with autocast(self.amp):
                         batch = self.preprocess_batch(batch)
+                        import sys
+                        print(f"[DEBUG] Trainer forward, batch keys: {batch.keys()}, compile={self.args.compile}", flush=True)
+                        sys.stdout.flush()
+                        print(f"[DEBUG] self.model type: {type(self.model)}", flush=True)
+                        sys.stdout.flush()
                         if self.args.compile:
                             # Decouple inference and loss calculations for improved compile performance
                             preds = self.model(batch["img"])
                             loss, self.loss_items = unwrap_model(self.model).loss(batch, preds)
                         else:
+                            print(f"[DEBUG] Calling self.model(batch)", flush=True)
+                            sys.stdout.flush()
                             loss, self.loss_items = self.model(batch)
+                            print(f"[DEBUG] self.model(batch) returned, loss type: {type(loss)}", flush=True)
+                            sys.stdout.flush()
                         self.loss = loss.sum()
                         if RANK != -1:
                             self.loss *= self.world_size
@@ -867,13 +892,18 @@ class BaseTrainer:
 
     def save_metrics(self, metrics):
         """Save training metrics to a CSV file."""
+        import sys
+        print(f"[DEBUG save_metrics] CALLED | RANK={RANK} | epoch={self.epoch+1} | metrics keys={list(metrics.keys())}", flush=True)
+        print(f"[DEBUG save_metrics] self.csv={self.csv} | exists={self.csv.exists()}", flush=True)
         keys, vals = list(metrics.keys()), list(metrics.values())
         n = len(metrics) + 2  # number of cols
         t = time.time() - self.train_time_start
         self.csv.parent.mkdir(parents=True, exist_ok=True)  # ensure parent directory exists
         s = "" if self.csv.exists() else ("%s," * n % ("epoch", "time", *keys)).rstrip(",") + "\n"
+        print(f"[DEBUG save_metrics] about to write CSV | s length={len(s)}", flush=True)
         with open(self.csv, "a", encoding="utf-8") as f:
             f.write(s + ("%.6g," * n % (self.epoch + 1, t, *vals)).rstrip(",") + "\n")
+        print(f"[DEBUG save_metrics] CSV written successfully", flush=True)
 
     def plot_metrics(self):
         """Plot metrics from a CSV file."""

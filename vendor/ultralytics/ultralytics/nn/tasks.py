@@ -149,8 +149,11 @@ class BaseModel(torch.nn.Module):
         Returns:
             (torch.Tensor): Loss if x is a dict (training), or network predictions (inference).
         """
+        print(f"[DEBUG] BaseModel.forward called, x type: {type(x)}")
         if isinstance(x, dict):  # for cases of training and validating while training.
+            print(f"[DEBUG] x is dict, calling loss")
             return self.loss(x, *args, **kwargs)
+        print(f"[DEBUG] x is not dict, calling predict")
         return self.predict(x, *args, **kwargs)
 
     def predict(self, x, profile=False, visualize=False, augment=False, embed=None):
@@ -1057,12 +1060,16 @@ class WorldModel(DetectionModel):
             batch (dict): Batch to compute loss on.
             preds (torch.Tensor | list[torch.Tensor], optional): Predictions.
         """
+        print(f"[DEBUG] SegmentationModel.loss called, batch keys: {batch.keys()}")
         if not hasattr(self, "criterion"):
             self.criterion = self.init_criterion()
 
         if preds is None:
             preds = self.forward(batch["img"], txt_feats=batch["txt_feats"])
-        return self.criterion(preds, batch)
+        print(f"[DEBUG] Calling criterion, preds type: {type(preds)}")
+        result = self.criterion(preds, batch)
+        print(f"[DEBUG] Criterion returned, result type: {type(result)}")
+        return result
 
 
 class YOLOEModel(DetectionModel):
@@ -1300,6 +1307,7 @@ class YOLOEModel(DetectionModel):
             batch (dict): Batch to compute loss on.
             preds (torch.Tensor | list[torch.Tensor], optional): Predictions.
         """
+        print(f"[DEBUG] SegmentationModel.loss called, use_objectness={getattr(self.args, 'use_objectness', False)}")
         if not hasattr(self, "criterion"):
             from ultralytics.utils.loss import TVPDetectLoss
 

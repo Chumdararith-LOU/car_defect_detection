@@ -2,19 +2,19 @@ task: segment
 loss_type: seesaw
 seesaw_p: 0.8
 seesaw_q: 2.0
-model_preset: model5_resume_adapt/model1_remapped_7class_init.pt
+model_preset: yolo26m-seg.pt
 
 project_name: car_defect_detection
-run_name: seesaw_baseline
+run_name: seesaw_baseline_test
 multi_scale: false
 
-dataset_config: "data/processed/yolo_seg/data.yaml"
-epochs: 100
+dataset_config: "/Users/macbook/Documents/ITC8/Internship/AI Farm/Testing/car_defect_detection/data/processed/yolo_seg/data.yaml"
+epochs: 1
 imgsz: 1024
-batch_size: 8
-patience: 15
+batch_size: 2
+patience: 5
 device: 0
-workers: 8
+workers: 4
 amp: true
 
 # Locked transfer strategy: frozen backbone + head warmup

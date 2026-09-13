@@ -10,7 +10,7 @@ run_name: yolo26m_1024_stage2_clean_multiscale
 multi_scale: true
 
 # Dataset Paths
-dataset_config: "data/processed/yolo_seg_clean_2200_7cls_/dataset.yaml"
+dataset_config: "data/processed/yolo_seg/data.yaml"
 
 epochs: 150
 imgsz: 1024

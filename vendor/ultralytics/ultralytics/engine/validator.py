@@ -115,7 +115,16 @@ class BaseValidator:
         """
         import torchvision  # noqa (import here so torchvision import time not recorded in postprocess time)
 
-        self.args = get_cfg(overrides=args)
+        # Extract custom loss parameters before get_cfg validation
+        loss_params = {}
+        args_dict = vars(args) if hasattr(args, "__dict__") else args
+        for key in ("loss_type", "fl_gamma", "fl_alpha", "fl_scale", "seesaw_p", "seesaw_q", "use_objectness", "obj_loss_weight"):
+            if key in args_dict:
+                loss_params[key] = args_dict.pop(key)
+        self.args = get_cfg(overrides=args_dict)
+        # Inject custom loss parameters for native loss injection
+        for key, value in loss_params.items():
+            setattr(self.args, key, value)
         self.dataloader = dataloader
         self.stride = None
         self.data = None

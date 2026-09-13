@@ -547,6 +547,29 @@ class v8DetectionLoss:
         return loss * batch_size, loss_detach
 
 
+def _compute_obj_loss(preds_top, assigner_owner, batch):
+    """Shared helper: BCE objectness loss against the assigner's foreground mask.
+    
+    preds_top    : the dict that actually has the "obj" key on it.
+    assigner_owner: the v8SegmentationLoss instance whose .get_assigned_targets_and_loss 
+                    should be used (self.one2many for the end2end path).
+    """
+    obj_pred = preds_top["obj"]  # (bs, 1, N)
+    if obj_pred.dim() == 3:
+        obj_pred = obj_pred.squeeze(1)  # -> (bs, N)
+
+    # preds_top is either {"one2many":..., "one2one":..., "obj":...} (end2end)
+    # or the flat dict itself (non-end2end) — .get() handles both uniformly.
+    assign_preds = preds_top.get("one2many", preds_top)
+    fg_mask = assigner_owner.get_assigned_targets_and_loss(assign_preds, batch)[0][0]
+    obj_target = fg_mask.float()
+
+    assert obj_pred.shape == obj_target.shape, (
+        f"Objectness shape mismatch! Pred: {obj_pred.shape} vs Target: {obj_target.shape}."
+    )
+    return F.binary_cross_entropy_with_logits(obj_pred, obj_target)
+
+
 class v8SegmentationLoss(v8DetectionLoss):
     """Criterion class for computing training losses for YOLOv8 segmentation."""
 
@@ -554,9 +577,36 @@ class v8SegmentationLoss(v8DetectionLoss):
         self, model: torch.nn.Module, tal_topk: int = 10, tal_topk2: int | None = None
     ):  # model must be de-paralleled
         """Initialize the v8SegmentationLoss class with model parameters and mask overlap setting."""
+        print(f"[DEBUG] v8SegmentationLoss.__init__ called, use_objectness={getattr(model.args, 'use_objectness', False)}")
         super().__init__(model, tal_topk, tal_topk2)
         self.overlap = model.args.overlap_mask
         self.bcedice_loss = BCEDiceLoss(weight_bce=0.5, weight_dice=0.5)
+        self.args = model.args  # Cache args for __call__
+        
+        # --- CUSTOM LOSS INJECTION (Migrated from train.py) ---
+        loss_type = getattr(self.args, "loss_type", "bce")
+        if loss_type == "focal":
+            try:
+                # Dynamic import to avoid circular dependencies at module load time
+                from src.models.losses import ScaledFocalBCEWithLogitsLoss
+                self.bce = ScaledFocalBCEWithLogitsLoss(
+                    alpha=getattr(self.args, "fl_alpha", 0.25),
+                    gamma=getattr(self.args, "fl_gamma", 1.5),
+                    scale=getattr(self.args, "fl_scale", 1.0),
+                    reduction="none"
+                )
+                print(f"\n[🔥] SCALED FOCAL LOSS INJECTED (alpha={getattr(self.args, 'fl_alpha', 0.25)}, gamma={getattr(self.args, 'fl_gamma', 1.5)}, scale={getattr(self.args, 'fl_scale', 1.0)})\n")
+            except ImportError:
+                print("[⚠️] Could not import ScaledFocalBCEWithLogitsLoss from src.models.losses. Falling back to standard BCE.")
+        elif loss_type == "seesaw":
+            self.bce = SeesawBCE(
+                p=getattr(self.args, "seesaw_p", 0.8),
+                q=getattr(self.args, "seesaw_q", 2.0)
+            )
+            print(f"\n[🔥] SEESAW LOSS INJECTED (p={getattr(self.args, 'seesaw_p', 0.8)}, q={getattr(self.args, 'seesaw_q', 2.0)})\n")
+        else:
+            print("[ℹ️] Using standard BCE loss.")
+        # ------------------------------------------------------
 
     def loss(self, preds: dict[str, torch.Tensor], batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
         """Calculate and return the combined loss for detection and segmentation."""
@@ -617,6 +667,31 @@ class v8SegmentationLoss(v8DetectionLoss):
 
         loss[1] *= self.hyp.box  # seg gain
         return loss * batch_size, loss.detach()  # loss(box, seg, cls, dfl, semantic)
+
+    def __call__(
+        self,
+        preds: dict[str, torch.Tensor] | tuple[torch.Tensor, dict[str, torch.Tensor]],
+        batch: dict[str, torch.Tensor],
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Calculate the sum of the loss for box, cls and dfl multiplied by batch size."""
+        print(f"[DEBUG] v8SegmentationLoss.__call__ called, use_objectness={getattr(self.args, 'use_objectness', False)}")
+        preds_top = self.parse_output(preds)
+        loss, loss_items = self.loss(preds_top, batch)
+
+        # --- OBJECTNESS LOSS INJECTION (Migrated from train.py) ---
+        if getattr(self.args, "use_objectness", False):
+            print(f"[DEBUG] use_objectness=True, preds_top keys: {preds_top.keys() if isinstance(preds_top, dict) else type(preds_top)}")
+            if isinstance(preds_top, dict) and "obj" in preds_top:
+                obj_loss = _compute_obj_loss(preds_top, self, batch)
+                obj_loss_weight = getattr(self.args, "obj_loss_weight", 1.0)
+                loss = loss + (obj_loss * obj_loss_weight)
+                loss_items = torch.cat([loss_items, (obj_loss * obj_loss_weight).detach().view(1)])
+                print(f"\n[🔥] OBJECTNESS LOSS INJECTED (weight={obj_loss_weight}, obj_loss={obj_loss.item():.4f})\n")
+            else:
+                print("[DEBUG] No 'obj' key in preds_top")
+        # ----------------------------------------------------------
+
+        return loss, loss_items
 
     @staticmethod
     def single_mask_loss(
@@ -1254,11 +1329,19 @@ class E2ELoss:
 
     def __call__(self, preds: Any, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
         """Calculate the sum of the loss for box, cls and dfl multiplied by batch size."""
-        preds = self.one2many.parse_output(preds)
-        one2many, one2one = preds["one2many"], preds["one2one"]
+        preds_top = self.one2many.parse_output(preds)
+        one2many, one2one = preds_top["one2many"], preds_top["one2one"]
         loss_one2many = self.one2many.loss(one2many, batch)
         loss_one2one = self.one2one.loss(one2one, batch)
-        return loss_one2many[0] * self.o2m + loss_one2one[0] * self.o2o, loss_one2one[1]
+        loss = loss_one2many[0] * self.o2m + loss_one2one[0] * self.o2o, loss_one2one[1]
+
+        if isinstance(preds_top, dict) and "obj" in preds_top:
+            obj_loss = _compute_obj_loss(preds_top, self.one2many, batch)
+            loss = loss[0] + (obj_loss * getattr(self.one2many.args, "obj_loss_weight", 1.0)), loss[1]
+            loss_items = torch.cat([loss[1], (obj_loss * getattr(self.one2many.args, "obj_loss_weight", 1.0)).detach().view(1)])
+            loss = loss[0], loss_items
+
+        return loss
 
     def update(self) -> None:
         """Update the weights for one-to-many and one-to-one losses based on the decay schedule."""
