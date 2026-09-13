@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from ultralytics import YOLO
 from ultralytics import settings
 from ultralytics.utils.loss import v8SegmentationLoss
-from stage1.utils.config_helpers import resolve_device
+from src.stage1.utils.config_helpers import resolve_device
 from ultralytics.models.yolo.segment import SegmentationTrainer
 
 
