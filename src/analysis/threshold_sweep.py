@@ -151,7 +151,10 @@ def process_test_image(model, img_path, gts):
             c = int(cls[j])
             rec[c]["preds"].append((float(confs[j]), xyxy[j].tolist()))
             if masks is not None:
-                rec[c].setdefault("pred_masks", []).append(masks[j])
+                m = masks[j]
+                if m.shape[:2] != (h, w):  # vendor ultralytics may return masks at inference res
+                    m = cv2.resize(m.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST).astype(bool)
+                rec[c].setdefault("pred_masks", []).append(m)
 
     for c in range(N_CLASSES):
         preds, gts_c = rec[c]["preds"], rec[c]["gts"]
