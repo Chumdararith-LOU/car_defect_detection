@@ -102,7 +102,10 @@ def rebuild_optimizer_after_unfreeze(trainer, mode=None):
         decay=trainer.args.weight_decay,
         iterations=trainer.args.warmup_epochs,
     )
-    
+    # build_optimizer tracks every param incl. frozen ones; keep only trainable
+    for group in trainer.optimizer.param_groups:
+        group["params"] = [p for p in group["params"] if p.requires_grad]
+
     model_trainable = sum(p.numel() for p in trainer.model.parameters() if p.requires_grad)
     optim_tracked = count_optimizer_params(trainer.optimizer)
     
