@@ -87,7 +87,6 @@ def rebuild_optimizer_after_unfreeze(trainer, mode=None):
     if mode is None or mode not in UNFREEZE_MODES:
         return
     
-    from src.train.surgical_modes import UNFREEZE_MODES, apply_surgical_mode
     from ultralytics.utils.torch_utils import unwrap_model
     
     unwrapped_model = unwrap_model(trainer.model)
