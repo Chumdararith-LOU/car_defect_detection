@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Two-phase LP-FT pipeline driver for configs/train/stage2/clean_retrain_augmented.yaml.
 
-  --validate  check config + prerequisites, print CONFIG VALIDATED
-  --run       data prep -> phase 1 -> phase 2 -> eval
+  --validate     check config + prerequisites, print CONFIG VALIDATED
+  --run          data prep -> phase 1 -> phase 2 -> eval
+  --phase2-only  skip phase 1; resume from the newest phase1_best.pt
 """
 
 import argparse
@@ -179,15 +180,32 @@ def run_phase(cfg: dict, phase: str) -> Path:
     return best
 
 
-def run(cfg: dict) -> None:
-    validate(cfg)
-    build_car_only_test(cfg)
-    inject_clean_negatives(cfg)
+def find_phase1_best(cfg: dict) -> Path:
+    candidates = sorted(
+        (REPO_ROOT / "runs/segment" / cfg["common"]["project_name"]).glob(
+            f"{cfg['phase1']['run_name']}*/weights/phase1_best.pt"
+        ),
+        key=lambda p: p.stat().st_mtime,
+    )
+    if not candidates:
+        raise RuntimeError("no phase1_best.pt found — run phase 1 first")
+    return candidates[-1]
 
-    p1_best = run_phase(cfg, "phase1")
-    p1_final = p1_best.parent / "phase1_best.pt"
-    shutil.copy2(p1_best, p1_final)
-    print(f"[phase1] checkpoint saved as {p1_final.relative_to(REPO_ROOT)}")
+
+def run(cfg: dict, phase2_only: bool = False) -> None:
+    if phase2_only:
+        p1_final = find_phase1_best(cfg)
+        print(f"[phase2-only] resuming from {p1_final.relative_to(REPO_ROOT)}")
+        build_car_only_test(cfg)  # idempotent; needed for the final eval
+    else:
+        validate(cfg)
+        build_car_only_test(cfg)
+        inject_clean_negatives(cfg)
+
+        p1_best = run_phase(cfg, "phase1")
+        p1_final = p1_best.parent / "phase1_best.pt"
+        shutil.copy2(p1_best, p1_final)
+        print(f"[phase1] checkpoint saved as {p1_final.relative_to(REPO_ROOT)}")
 
     cfg2 = {**cfg, "phase2": {**cfg["phase2"], "model_preset": str(p1_final.relative_to(REPO_ROOT))}}
     p2_best = run_phase(cfg2, "phase2")
@@ -214,13 +232,17 @@ def main():
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--validate", action="store_true")
     g.add_argument("--run", action="store_true")
+    g.add_argument("--phase2-only", action="store_true",
+                   help="skip phase 1; resume from the newest phase1_best.pt")
     args = ap.parse_args()
 
     cfg = load_cfg(Path(args.config))
     if args.validate:
         validate(cfg)
-    else:
+    elif args.run:
         run(cfg)
+    else:
+        run(cfg, phase2_only=True)
 
 
 if __name__ == "__main__":
