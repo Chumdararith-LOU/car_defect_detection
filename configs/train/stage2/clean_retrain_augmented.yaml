@@ -1,0 +1,88 @@
+# =============================================================================
+# Two-phase LP-FT retrain — cleaned + copy-paste-augmented dataset
+#
+#   Phase 1  head-only warmup      freeze 0-22, train head (23)
+#   Phase 2  early-texture LP-FT   freeze 5-22, train 0-4 + head (23)
+#
+#   python src/train/run_two_phase.py --config <this file> --validate
+#   python src/train/run_two_phase.py --config <this file> --run
+#
+# Baseline to beat: seesaw_sweep_control_bce (BCE + early_texture) = 0.449 Mask mAP50
+# =============================================================================
+
+common:
+  task: segment
+  loss_type: bce            # plain BCE — no Seesaw, no focal
+  project_name: car_defect_detection
+  dataset_config: data/processed/yolo_seg_clean_augmented/data.yaml
+  imgsz: 1024
+  batch_size: 8
+  device: 0
+  workers: 8
+  amp: true
+  multi_scale: false
+  optimizer: AdamW
+  lrf: 0.01
+
+phase1:
+  # Head-only warmup from the Model 1 backbone (7-class remapped)
+  model_preset: model5_resume_adapt/model1_remapped_7class_init.pt
+  run_name: clean_retrain_aug_p1_head_warmup
+  surgical_mode: none
+  freeze: 23                # freeze layers 0-22, train head (23) only
+  epochs: 10
+  patience: 100             # never early-stop a 10-epoch warmup
+  lr0: 0.001
+  augmentations:
+    hsv_h: 0.0
+    hsv_s: 0.0
+    hsv_v: 0.0
+    degrees: 0.0
+    scale: 0.0
+    perspective: 0.0
+    fliplr: 0.0
+    mosaic: 0.0
+    mixup: 0.0
+    erasing: 0.0
+    close_mosaic: 0
+
+phase2:
+  # Early-texture LP-FT resumed from phase1_best.pt
+  model_preset: "@phase1_best"   # substituted by run_two_phase.py
+  run_name: clean_retrain_aug_p2_early_texture
+  surgical_mode: early_texture   # unfreeze {0,1,2,3,4,23}; freeze 5-22
+  freeze: 23                # base freeze; surgical callback overrides
+  epochs: 90
+  patience: 20
+  lr0: 0.0005
+  augmentations:
+    hsv_h: 0.03
+    hsv_s: 0.4
+    hsv_v: 0.5
+    degrees: 15.0
+    scale: 0.2
+    perspective: 0.0005
+    fliplr: 0.5
+    mosaic: 0.0
+    mixup: 0.0
+    erasing: 0.2
+    close_mosaic: 10
+
+eval:
+  # After phase 2: per-class Mask mAP50/P/R/F1 on the car-only test subset
+  # (418 images), clean-image FPR on the 150 clean-car eval images.
+  car_only_test_list: reports/corrosion_car_test.txt
+  car_only_test_dir: data/processed/yolo_seg_car_test
+  clean_eval_dir: data/processed/clean_cars/images/clean_eval
+  noncar_test_list: reports/corrosion_noncar_test.txt
+  fpr_thresholds: [0.15, 0.25]
+  baseline:
+    run: seesaw_sweep_control_bce
+    mask_map50: 0.449
+
+clean_negatives:
+  # Injected into the augmented train split before phase 1 (idempotent, cneg__ prefix)
+  ratio: 0.05             # 5% of final train set — 10-15% caused the shy model
+  seed: 42
+  source: data/processed/clean_cars/images/clean_train
+  script: src/data/inject_clean_negatives.py

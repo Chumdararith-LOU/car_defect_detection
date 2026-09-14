@@ -19,13 +19,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-POS_TRAIN_IMG_DIR = REPO_ROOT / "data/processed/yolo_seg/images/train"
-POS_TRAIN_LBL_DIR = REPO_ROOT / "data/processed/yolo_seg/labels/train"
-
 CLEAN_IMG_DIR = REPO_ROOT / "data/processed/clean_cars/images/clean_train"
 CLEAN_LBL_DIR = REPO_ROOT / "data/processed/clean_cars/labels/clean_train"
 
-MANIFEST_PATH = REPO_ROOT / "data/processed/yolo_seg/.injected_clean.json"
 PREFIX = "cneg__"
 
 
@@ -38,19 +34,30 @@ def main():
         help="Target fraction of clean images in the final combined train set (e.g. 0.10 for 10%%)"
     )
     parser.add_argument(
-        "--seed", 
-        type=int, 
+        "--seed",
+        type=int,
         default=42,
         help="Random seed for deterministic sampling"
+    )
+    parser.add_argument(
+        "--target",
+        type=str,
+        default="yolo_seg",
+        help="Dataset directory name under data/processed/ (default: yolo_seg)"
     )
     args = parser.parse_args()
 
     if not (0.0 < args.neg_ratio < 1.0):
         raise ValueError("--neg-ratio must be between 0.0 and 1.0")
 
+    base = REPO_ROOT / "data/processed" / args.target
+    pos_img_dir = base / "images/train"
+    pos_lbl_dir = base / "labels/train"
+    manifest_path = base / ".injected_clean.json"
+
     # 1. Clean up any previous injections (Idempotency)
     removed = 0
-    for d in [POS_TRAIN_IMG_DIR, POS_TRAIN_LBL_DIR]:
+    for d in [pos_img_dir, pos_lbl_dir]:
         if d.exists():
             for f in d.glob(f"{PREFIX}*"):
                 f.unlink()
@@ -59,7 +66,7 @@ def main():
         print(f"[cleanup] removed {removed} previously injected files.")
 
     # 2. Count true positive images (ignoring any leftover prefixed files)
-    pos_imgs = [f for f in POS_TRAIN_IMG_DIR.iterdir() if not f.name.startswith(PREFIX)]
+    pos_imgs = [f for f in pos_img_dir.iterdir() if not f.name.startswith(PREFIX)]
     n_pos = len(pos_imgs)
     print(f"[count] positive training images: {n_pos}")
 
@@ -85,14 +92,14 @@ def main():
         lbl_name = img_path.stem + ".txt"
         new_lbl_name = f"{PREFIX}{lbl_name}"
 
-        shutil.copy2(img_path, POS_TRAIN_IMG_DIR / new_img_name)
+        shutil.copy2(img_path, pos_img_dir / new_img_name)
 
         src_lbl = CLEAN_LBL_DIR / lbl_name
         if src_lbl.exists():
-            shutil.copy2(src_lbl, POS_TRAIN_LBL_DIR / new_lbl_name)
+            shutil.copy2(src_lbl, pos_lbl_dir / new_lbl_name)
         else:
             # Fallback: create empty file if somehow missing
-            (POS_TRAIN_LBL_DIR / new_lbl_name).touch()
+            (pos_lbl_dir / new_lbl_name).touch()
         copied += 1
 
     # 6. Write manifest for auditability
@@ -106,7 +113,7 @@ def main():
         "seed": args.seed,
         "prefix": PREFIX
     }
-    MANIFEST_PATH.write_text(json.dumps(manifest, indent=2))
+    manifest_path.write_text(json.dumps(manifest, indent=2))
 
     print(f"\n=== injection summary ===")
     print(f"target ratio : {args.neg_ratio:.2%}")
@@ -114,7 +121,7 @@ def main():
     print(f"positive imgs: {n_pos}")
     print(f"injected     : {copied}")
     print(f"total train  : {total_train}")
-    print(f"manifest     : {MANIFEST_PATH.relative_to(REPO_ROOT)}")
+    print(f"manifest     : {manifest_path.relative_to(REPO_ROOT)}")
 
 
 if __name__ == "__main__":
