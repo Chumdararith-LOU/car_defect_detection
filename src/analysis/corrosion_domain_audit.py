@@ -52,6 +52,18 @@ CLOSEUP_AREA_PCT = 30.0
 MAX_INSTANCES = 10
 
 
+def read_corrosion_lines(label_path):
+    """Corrosion (class 1) lines from a YOLO label file ([] if missing)."""
+    lines = []
+    if label_path.exists():
+        with open(label_path) as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 5 and parts[0] == str(CORROSION):
+                    lines.append(parts)
+    return lines
+
+
 def corrosion_label_files(split):
     """Yield (image_name, [corrosion lines]) for images with >=1 corrosion annotation."""
     img_dir = Path(DATA_ROOT) / "images" / split
@@ -62,17 +74,23 @@ def corrosion_label_files(split):
     for img_path in sorted(img_dir.iterdir()):
         if not (img_path.is_file() and img_path.suffix.lower() in IMAGE_EXTS):
             continue
-        label_path = lbl_dir / (img_path.stem + ".txt")
-        if not label_path.exists():
-            continue
-        lines = []
-        with open(label_path) as f:
-            for line in f:
-                parts = line.strip().split()
-                if len(parts) >= 5 and parts[0] == str(CORROSION):
-                    lines.append(parts)
+        lines = read_corrosion_lines(lbl_dir / (img_path.stem + ".txt"))
         if lines:
             yield img_path.name, lines
+
+
+def classify_split_all(split):
+    """Classify EVERY image in a split (filename heuristics + corrosion geometry)."""
+    img_dir = Path(DATA_ROOT) / "images" / split
+    lbl_dir = Path(DATA_ROOT) / "labels" / split
+    results = []
+    for img_path in sorted(img_dir.iterdir()):
+        if not (img_path.is_file() and img_path.suffix.lower() in IMAGE_EXTS):
+            continue
+        areas = parse_instances(read_corrosion_lines(lbl_dir / (img_path.stem + ".txt")))
+        label, reasons = classify(img_path.name, len(areas), areas)
+        results.append({"name": img_path.name, "label": label, "reasons": reasons})
+    return results
 
 
 def parse_instances(lines):
@@ -160,6 +178,16 @@ def main():
     print(f"[*] Classified: car={len(by_label['car'])} non-car={len(by_label['non-car'])} "
           f"ambiguous={len(by_label['ambiguous'])}")
 
+    # All-image classification of the evaluation splits (for car-only eval lists)
+    allimg = {}
+    for split in ("val", "test"):
+        print(f"[*] Classifying all {split} images...")
+        allimg[split] = classify_split_all(split)
+        counts = {l: sum(1 for r in allimg[split] if r["label"] == l)
+                  for l in ("car", "non-car", "ambiguous")}
+        print(f"    {split}: {len(allimg[split])} images -> "
+              f"car={counts['car']} non-car={counts['non-car']} ambiguous={counts['ambiguous']}")
+
     # Report
     L = []
     L.append("# Corrosion Domain Audit\n")
@@ -190,6 +218,24 @@ def main():
         row = [sum(1 for r in records if r["split"] == split and r["label"] == l)
                for l in ("car", "non-car", "ambiguous")]
         L.append(f"| {split} | {row[0]} | {row[1]} | {row[2]} |")
+    L.append("")
+
+    L.append("## All-Image Domain Classification (evaluation splits)\n")
+    L.append("Every image in the split, classified (corrosion geometry heuristics apply where "
+             "corrosion annotations exist). **Corrosion mAP50 is reported on the car list only.**\n")
+    L.append("| Split | Total images | car | non-car | ambiguous |")
+    L.append("|---|---|---|---|---|")
+    for split in ("val", "test"):
+        counts = {l: sum(1 for r in allimg[split] if r["label"] == l)
+                  for l in ("car", "non-car", "ambiguous")}
+        L.append(f"| {split} | {len(allimg[split])} | {counts['car']} | {counts['non-car']} | {counts['ambiguous']} |")
+    L.append("")
+    L.append("Evaluation lists (ambiguous is excluded from both — unconfirmed):\n")
+    for split in ("val", "test"):
+        n_car = sum(1 for r in allimg[split] if r["label"] == "car")
+        n_non = sum(1 for r in allimg[split] if r["label"] == "non-car")
+        L.append(f"- `reports/corrosion_car_{split}.txt` — {n_car} in-domain images (primary eval set)")
+        L.append(f"- `reports/corrosion_noncar_{split}.txt` — {n_non} out-of-domain images (excluded from primary eval)")
     L.append("")
 
     L.append("## Top 50 Most Likely Non-car\n")
@@ -231,6 +277,14 @@ def main():
         with open(Path(OUTPUT_DIR) / fname, "w") as f:
             for r in sorted(by_label[label], key=lambda r: (r["split"], r["name"])):
                 f.write(f"{r['split']}/{r['name']}\n")
+
+    for split in ("val", "test"):
+        for label, fname in (("car", f"corrosion_car_{split}.txt"),
+                             ("non-car", f"corrosion_noncar_{split}.txt")):
+            with open(Path(OUTPUT_DIR) / fname, "w") as f:
+                for r in sorted(allimg[split], key=lambda r: r["name"]):
+                    if r["label"] == label:
+                        f.write(r["name"] + "\n")
 
     print(f"Found {len(by_label['car'])} car images, {len(by_label['non-car'])} non-car images, "
           f"{len(by_label['ambiguous'])} ambiguous out of {total} total corrosion images")
