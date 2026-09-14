@@ -1,40 +1,34 @@
 #!/usr/bin/env python3
 """
-Corrosion FN/FP Error Analysis Script
+Corrosion FN/FP Error Analysis
 
 Run on server:
   conda activate car_defect
   python src/analysis/corrosion_error_analysis.py
 
-Outputs:
-  reports/corrosion_error_analysis/summary.md
-  reports/corrosion_error_analysis/fn_records.csv
-  reports/corrosion_error_analysis/fp_records.csv
-  reports/corrosion_error_analysis/summary_stats.csv
-  reports/corrosion_error_analysis/*.png (visual examples)
+Outputs (all under reports/corrosion_error_analysis/):
+  summary.md, fn_records.csv, fp_records.csv, summary_stats.csv,
+  fn_*.png, fp_*.png, background_fps/*.png, class_confusion/*.png
 """
 
+import csv
 import os
 import sys
-import csv
+from collections import Counter
+from datetime import datetime
 from pathlib import Path
-from collections import defaultdict
+
+import numpy as np
+from PIL import Image, ImageDraw
 
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
-
 _VENDOR = os.path.join(_PROJECT_ROOT, "vendor", "ultralytics")
-if _VENDOR not in sys.path:
-    sys.path.insert(0, _VENDOR)
+for _p in (_PROJECT_ROOT, _VENDOR):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
-import torch
-import numpy as np
 from ultralytics import YOLO
-from PIL import Image, ImageDraw, ImageFont
 
-
-# Class mapping
 CLASS_NAMES = {
     0: "broken_lamp",
     1: "corrosion",
@@ -44,590 +38,620 @@ CLASS_NAMES = {
     5: "glass_shatter",
     6: "scratch",
 }
-CORROSION_CLASS = 1
+CORROSION = 1
+
+MODEL_PATHS = [
+    "runs/segment/car_defect_detection/seesaw_surgical_texture_refined/weights/best.pt",
+    "runs/segment/runs/segment/car_defect_detection/seesaw_surgical_texture_refined/weights/best.pt",
+]
+IMAGES_DIR = "data/processed/yolo_seg/images/test"
+LABELS_DIR = "data/processed/yolo_seg/labels/test"
+OUTPUT_DIR = "reports/corrosion_error_analysis"
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp"}
 
 
-def load_ground_truths(labels_dir):
-    """Load all ground truth annotations from YOLO segmentation format."""
-    gt_by_image = {}
-    
-    for label_file in sorted(Path(labels_dir).glob("*.txt")):
-        image_name = label_file.stem + ".jpg"
+def resolve_model_path():
+    for p in MODEL_PATHS:
+        if os.path.exists(p):
+            return p
+    sys.exit("ERROR: model not found. Tried:\n" + "\n".join(MODEL_PATHS))
+
+
+def list_images(images_dir):
+    d = Path(images_dir)
+    if not d.is_dir():
+        sys.exit(f"ERROR: image directory not found: {images_dir}")
+    return [p for p in sorted(d.iterdir()) if p.is_file() and p.suffix.lower() in IMAGE_EXTS]
+
+
+def load_ground_truths(labels_dir, image_paths):
+    """image_name -> list of {class_id, bbox (normalized), polygon, image_name}."""
+    gts_by_image = {}
+    for img_path in image_paths:
+        label_path = Path(labels_dir) / (img_path.stem + ".txt")
         gts = []
-        
-        with open(label_file, "r") as f:
-            for line in f:
-                parts = line.strip().split()
-                if len(parts) < 7:
-                    continue
-                class_id = int(parts[0])
-                coords = [float(x) for x in parts[1:]]
-                if len(coords) % 2 != 0:
-                    continue
-                polygon = [(coords[i], coords[i + 1]) for i in range(0, len(coords), 2)]
-                xs = [p[0] for p in polygon]
-                ys = [p[1] for p in polygon]
-                bbox = (min(xs), min(ys), max(xs), max(ys))
-                gts.append({
-                    "class_id": class_id,
-                    "bbox": bbox,
-                    "polygon": polygon,
-                    "image_name": image_name,
-                })
-        
-        if gts:
-            gt_by_image[image_name] = gts
-    
-    return gt_by_image
+        if label_path.exists():
+            with open(label_path) as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) < 7:
+                        continue
+                    class_id = int(parts[0])
+                    coords = [float(x) for x in parts[1:]]
+                    if len(coords) % 2:
+                        continue
+                    xs, ys = coords[0::2], coords[1::2]
+                    gts.append({
+                        "class_id": class_id,
+                        "bbox": (min(xs), min(ys), max(xs), max(ys)),
+                        "polygon": list(zip(xs, ys)),
+                        "image_name": img_path.name,
+                    })
+        gts_by_image[img_path.name] = gts
+    return gts_by_image
 
 
-def compute_iou(box1, box2):
-    """Compute IoU between two bounding boxes (x1, y1, x2, y2)."""
-    x1 = max(box1[0], box2[0])
-    y1 = max(box1[1], box2[1])
-    x2 = min(box1[2], box2[2])
-    y2 = min(box1[3], box2[3])
-    
+def compute_iou(b1, b2):
+    x1, y1 = max(b1[0], b2[0]), max(b1[1], b2[1])
+    x2, y2 = min(b1[2], b2[2]), min(b1[3], b2[3])
     if x1 >= x2 or y1 >= y2:
         return 0.0
-    
-    intersection = (x2 - x1) * (y2 - y1)
-    area1 = (box1[2] - box1[0]) * (box1[3] - box1[1])
-    area2 = (box2[2] - box2[0]) * (box2[3] - box2[1])
-    union = area1 + area2 - intersection
-    
-    return intersection / union if union > 0 else 0.0
+    inter = (x2 - x1) * (y2 - y1)
+    a1 = (b1[2] - b1[0]) * (b1[3] - b1[1])
+    a2 = (b2[2] - b2[0]) * (b2[3] - b2[1])
+    union = a1 + a2 - inter
+    return inter / union if union > 0 else 0.0
 
 
-def bbox_to_pixels(bbox, img_w, img_h):
-    """Convert normalized bbox to pixel coordinates."""
-    x1, y1, x2, y2 = bbox
-    return (int(x1 * img_w), int(y1 * img_h), int(x2 * img_w), int(y2 * img_h))
-
-
-def compute_bbox_area(bbox, img_w, img_h):
-    """Compute bbox area as percentage of image."""
-    x1, y1, x2, y2 = bbox
-    area = (x2 - x1) * (y2 - y1)
-    return area / (img_w * img_h)
-
-
-def run_inference(model, images_dir):
-    """Run YOLO inference on all images in directory."""
-    results_by_image = {}
-    
-    image_files = sorted(Path(images_dir).glob("*.jpg"))
-    
-    for i, img_path in enumerate(image_files):
+def run_inference(model, image_paths, keep_masks=False):
+    """image_name -> list of {class_id, confidence, bbox (px), [mask]}."""
+    results = {}
+    total = len(image_paths)
+    for i, img_path in enumerate(image_paths):
         if (i + 1) % 50 == 0:
-            print(f"  [{i + 1}/{len(image_files)}] Processing {img_path.name}...")
-        
-        results = model.predict(
-            str(img_path),
-            conf=0.001,
-            iou=0.7,
-            imgsz=1024,
-            verbose=False,
-        )
-        
+            print(f"  [{i + 1}/{total}] {img_path.name}")
+        res = model.predict(str(img_path), conf=0.001, iou=0.7, imgsz=1024, verbose=False)[0]
         preds = []
-        for result in results:
-            if result.boxes is None or len(result.boxes) == 0:
-                continue
-            
-            boxes = result.boxes
-            masks = result.masks
-            
-            for j in range(len(boxes)):
-                box = boxes[j]
+        if res.boxes is not None and len(res.boxes):
+            xyxy = res.boxes.xyxy.cpu().numpy()
+            confs = res.boxes.conf.cpu().numpy()
+            cls = res.boxes.cls.cpu().numpy().astype(int)
+            masks = res.masks.data.cpu().numpy() if (keep_masks and res.masks is not None) else None
+            for j in range(len(xyxy)):
                 pred = {
-                    "class_id": int(box.cls.item()),
-                    "confidence": float(box.conf.item()),
-                    "bbox": box.xyxy[0].tolist(),
+                    "class_id": int(cls[j]),
+                    "confidence": float(confs[j]),
+                    "bbox": xyxy[j].tolist(),
                 }
-                
-                if masks is not None and j < len(masks):
-                    pred["mask"] = masks[j].data[0].cpu().numpy()
-                
+                if masks is not None:
+                    pred["mask"] = masks[j]
                 preds.append(pred)
-        
-        results_by_image[img_path.name] = preds
-    
-    return results_by_image
+        results[img_path.name] = preds
+    return results
 
 
-def categorize_corrosion_errors(gts, preds, img_w, img_h):
-    """Categorize corrosion FN/FP errors."""
-    corrosion_gts = [gt for gt in gts if gt["class_id"] == CORROSION_CLASS]
-    corrosion_preds = [p for p in preds if p["class_id"] == CORROSION_CLASS]
-    
-    fn_records = []
-    fp_records = []
-    
-    matched_gt_indices = set()
-    matched_pred_indices = set()
-    
-    # Match corrosion GTs to predictions
-    for gt_idx, gt in enumerate(corrosion_gts):
-        gt_bbox = gt["bbox"]
-        gt_area_pct = compute_bbox_area(gt_bbox, img_w, img_h)
-        gt_aspect = (gt_bbox[2] - gt_bbox[0]) / (gt_bbox[3] - gt_bbox[1]) if (gt_bbox[3] - gt_bbox[1]) > 0 else 1.0
-        
-        best_pred_idx = None
-        best_iou = 0.0
-        best_conf = 0.0
-        
-        for pred_idx, pred in enumerate(corrosion_preds):
+def categorize_corrosion_errors(image_name, gts, preds, img_w, img_h):
+    """Return (fn_records, fp_records). fn_records also contains 'tp' rows."""
+    corrosion_gts = [gt for gt in gts if gt["class_id"] == CORROSION]
+    corrosion_preds = [p for p in preds if p["class_id"] == CORROSION]
+    gt_bboxes_px = [
+        (gt["bbox"][0] * img_w, gt["bbox"][1] * img_h, gt["bbox"][2] * img_w, gt["bbox"][3] * img_h)
+        for gt in corrosion_gts
+    ]
+
+    # Greedy TP matching at IoU >= 0.5 (best IoU first, tie-break on confidence)
+    pairs = []
+    for gi, gt_bbox in enumerate(gt_bboxes_px):
+        for pi, pred in enumerate(corrosion_preds):
             iou = compute_iou(gt_bbox, pred["bbox"])
-            if iou > best_iou:
-                best_iou = iou
-                best_pred_idx = pred_idx
-                best_conf = pred["confidence"]
-        
-        if best_pred_idx is not None:
-            if best_iou >= 0.5:
-                # TP
-                matched_gt_indices.add(gt_idx)
-                matched_pred_indices.add(best_pred_idx)
-                fn_records.append({
-                    "image_name": corrosion_gts[0]["image_name"],
-                    "category": "tp",
-                    "gt_area_pct": gt_area_pct,
-                    "gt_aspect_ratio": gt_aspect,
-                    "best_iou": best_iou,
-                    "best_conf": best_conf,
-                    "overlapping_class": -1,
-                })
-            elif best_iou >= 0.3:
-                # Mislocalized
-                matched_gt_indices.add(gt_idx)
-                matched_pred_indices.add(best_pred_idx)
-                fn_records.append({
-                    "image_name": corrosion_gts[0]["image_name"],
-                    "category": "mislocalized",
-                    "gt_area_pct": gt_area_pct,
-                    "gt_aspect_ratio": gt_aspect,
-                    "best_iou": best_iou,
-                    "best_conf": best_conf,
-                    "overlapping_class": -1,
-                })
-            elif best_conf < 0.25:
-                # Low confidence
-                matched_gt_indices.add(gt_idx)
-                matched_pred_indices.add(best_pred_idx)
-                fn_records.append({
-                    "image_name": corrosion_gts[0]["image_name"],
-                    "category": "low_confidence",
-                    "gt_area_pct": gt_area_pct,
-                    "gt_aspect_ratio": gt_aspect,
-                    "best_iou": best_iou,
-                    "best_conf": best_conf,
-                    "overlapping_class": -1,
-                })
-            else:
-                # Check for class confusion
-                any_other_overlap = False
-                overlapping_class = -1
-                for pred_idx, pred in enumerate(corrosion_preds):
-                    iou = compute_iou(gt_bbox, pred["bbox"])
-                    if iou >= 0.3 and pred["class_id"] != CORROSION_CLASS:
-                        any_other_overlap = True
-                        overlapping_class = pred["class_id"]
-                        break
-                
-                if any_other_overlap:
-                    fn_records.append({
-                        "image_name": corrosion_gts[0]["image_name"],
-                        "category": "class_confusion",
-                        "gt_area_pct": gt_area_pct,
-                        "gt_aspect_ratio": gt_aspect,
-                        "best_iou": best_iou,
-                        "best_conf": best_conf,
-                        "overlapping_class": overlapping_class,
-                    })
-                else:
-                    fn_records.append({
-                        "image_name": corrosion_gts[0]["image_name"],
-                        "category": "completely_missed",
-                        "gt_area_pct": gt_area_pct,
-                        "gt_aspect_ratio": gt_aspect,
-                        "best_iou": best_iou,
-                        "best_conf": best_conf,
-                        "overlapping_class": -1,
-                    })
-        else:
-            # No corrosion prediction overlaps
-            any_other_overlap = False
-            overlapping_class = -1
-            for pred in preds:
-                iou = compute_iou(gt_bbox, pred["bbox"])
-                if iou >= 0.3 and pred["class_id"] != CORROSION_CLASS:
-                    any_other_overlap = True
-                    overlapping_class = pred["class_id"]
-                    break
-            
-            if any_other_overlap:
-                fn_records.append({
-                    "image_name": corrosion_gts[0]["image_name"],
-                    "category": "class_confusion",
-                    "gt_area_pct": gt_area_pct,
-                    "gt_aspect_ratio": gt_aspect,
-                    "best_iou": 0.0,
-                    "best_conf": 0.0,
-                    "overlapping_class": overlapping_class,
-                })
-            else:
-                fn_records.append({
-                    "image_name": corrosion_gts[0]["image_name"],
-                    "category": "completely_missed",
-                    "gt_area_pct": gt_area_pct,
-                    "gt_aspect_ratio": gt_aspect,
-                    "best_iou": 0.0,
-                    "best_conf": 0.0,
-                    "overlapping_class": -1,
-                })
-    
-    # Process unmatched corrosion predictions as FPs
-    for pred_idx, pred in enumerate(corrosion_preds):
-        if pred_idx in matched_pred_indices:
+            if iou >= 0.5:
+                pairs.append((iou, pred["confidence"], gi, pi))
+    pairs.sort(reverse=True)
+    tp_gt, tp_pred = {}, {}
+    for iou, conf, gi, pi in pairs:
+        if gi in tp_gt or pi in tp_pred:
             continue
-        
-        pred_bbox = pred["bbox"]
-        pred_area_pct = compute_bbox_area(pred_bbox, img_w, img_h)
-        
-        # Check overlap with any GT
-        best_iou = 0.0
-        best_gt_class = -1
-        
-        for gt in gts:
-            iou = compute_iou(pred_bbox, gt["bbox"])
-            if iou > best_iou:
-                best_iou = iou
-                best_gt_class = gt["class_id"]
-        
-        if best_iou < 0.1:
-            fp_records.append({
-                "image_name": corrosion_gts[0]["image_name"] if corrosion_gts else pred.get("image_name", "unknown"),
-                "category": "background_fp",
-                "pred_conf": pred["confidence"],
-                "pred_area_pct": pred_area_pct,
-                "overlapping_gt_class": -1,
-                "iou_with_gt": 0.0,
-            })
-        elif best_gt_class != CORROSION_CLASS and best_iou >= 0.3:
-            fp_records.append({
-                "image_name": corrosion_gts[0]["image_name"] if corrosion_gts else pred.get("image_name", "unknown"),
-                "category": "class_confusion_fp",
-                "pred_conf": pred["confidence"],
-                "pred_area_pct": pred_area_pct,
-                "overlapping_gt_class": best_gt_class,
-                "iou_with_gt": best_iou,
-            })
-        elif best_iou >= 0.5:
-            fp_records.append({
-                "image_name": corrosion_gts[0]["image_name"] if corrosion_gts else pred.get("image_name", "unknown"),
-                "category": "duplicate",
-                "pred_conf": pred["confidence"],
-                "pred_area_pct": pred_area_pct,
-                "overlapping_gt_class": CORROSION_CLASS,
-                "iou_with_gt": best_iou,
-            })
+        tp_gt[gi] = (iou, conf)
+        tp_pred[pi] = gi
+
+    fn_records = []
+    used_preds = set(tp_pred)
+    for gi, gt in enumerate(corrosion_gts):
+        gt_bbox = gt_bboxes_px[gi]
+        w, h = gt_bbox[2] - gt_bbox[0], gt_bbox[3] - gt_bbox[1]
+        gt_area_pct = 100.0 * w * h / (img_w * img_h)
+        gt_aspect = w / h if h > 0 else 1.0
+        overlapping_class = -1
+
+        if gi in tp_gt:
+            iou, conf = tp_gt[gi]
+            category = "tp" if conf >= 0.25 else "low_confidence"
         else:
-            fp_records.append({
-                "image_name": corrosion_gts[0]["image_name"] if corrosion_gts else pred.get("image_name", "unknown"),
-                "category": "localization_error",
-                "pred_conf": pred["confidence"],
-                "pred_area_pct": pred_area_pct,
-                "overlapping_gt_class": CORROSION_CLASS,
-                "iou_with_gt": best_iou,
-            })
-    
+            best_iou, best_pi, conf = 0.0, None, 0.0
+            for pi, pred in enumerate(corrosion_preds):
+                iou = compute_iou(gt_bbox, pred["bbox"])
+                if iou > best_iou:
+                    best_iou, best_pi, conf = iou, pi, pred["confidence"]
+            iou = best_iou
+            if best_iou >= 0.3:
+                category = "mislocalized"
+                if best_pi is not None:
+                    used_preds.add(best_pi)
+            else:
+                best_other_iou = 0.0
+                for pred in preds:
+                    if pred["class_id"] == CORROSION:
+                        continue
+                    oi = compute_iou(gt_bbox, pred["bbox"])
+                    if oi >= 0.3 and oi > best_other_iou:
+                        best_other_iou = oi
+                        overlapping_class = pred["class_id"]
+                category = "class_confusion" if overlapping_class >= 0 else "completely_missed"
+
+        fn_records.append({
+            "image_name": image_name,
+            "category": category,
+            "gt_area_pct": gt_area_pct,
+            "gt_aspect_ratio": gt_aspect,
+            "best_iou": iou,
+            "best_conf": conf,
+            "overlapping_class": overlapping_class,
+            "_gt": gt,
+            "_gt_bbox_px": gt_bbox,
+        })
+
+    fp_records = []
+    for pi, pred in enumerate(corrosion_preds):
+        if pi in used_preds:
+            continue
+        pb = pred["bbox"]
+        pred_area_pct = 100.0 * (pb[2] - pb[0]) * (pb[3] - pb[1]) / (img_w * img_h)
+        best_iou, best_gt_class = 0.0, -1
+        for gt in gts:
+            gt_bbox = (gt["bbox"][0] * img_w, gt["bbox"][1] * img_h,
+                       gt["bbox"][2] * img_w, gt["bbox"][3] * img_h)
+            iou = compute_iou(pb, gt_bbox)
+            if iou > best_iou:
+                best_iou, best_gt_class = iou, gt["class_id"]
+        if best_iou < 0.1:
+            category = "background_fp"
+        elif best_gt_class == CORROSION:
+            category = "duplicate" if best_iou >= 0.5 else "localization_error"
+        else:
+            category = "class_confusion_fp"
+        fp_records.append({
+            "image_name": image_name,
+            "category": category,
+            "pred_conf": pred["confidence"],
+            "pred_area_pct": pred_area_pct,
+            "overlapping_gt_class": best_gt_class,
+            "iou_with_gt": best_iou,
+            "_pred": pred,
+        })
+
     return fn_records, fp_records
 
 
-def draw_image_with_annotations(img_path, gts, preds, output_path, fn_category=None, fp_category=None):
-    """Draw image with GT (green) and predictions (red)."""
-    img = Image.open(img_path).convert("RGB")
-    draw = ImageDraw.Draw(img)
-    
-    img_w, img_h = img.size
-    
-    # Draw GTs in green
-    for gt in gts:
-        bbox = bbox_to_pixels(gt["bbox"], img_w, img_h)
-        draw.rectangle(bbox, outline="green", width=2)
-    
-    # Draw predictions
-    for pred in preds:
-        if pred["class_id"] == CORROSION_CLASS:
-            bbox = bbox_to_pixels(pred["bbox"], img_w, img_h)
-            if fn_category and pred.get("is_fn", False):
-                draw.rectangle(bbox, outline="orange", width=2)
-            elif fp_category and pred.get("is_fp", False):
-                draw.rectangle(bbox, outline="red", width=2)
+def cross_class_stats(gts, preds, img_w, img_h):
+    """Per-class TP/FP/FN at IoU=0.5 (greedy, confidence-ordered)."""
+    stats = {c: {"tp": 0, "fp": 0, "fn": 0} for c in CLASS_NAMES}
+    for c in CLASS_NAMES:
+        gts_c = [gt for gt in gts if gt["class_id"] == c]
+        gts_px = [(gt["bbox"][0] * img_w, gt["bbox"][1] * img_h,
+                   gt["bbox"][2] * img_w, gt["bbox"][3] * img_h) for gt in gts_c]
+        matched = set()
+        for pred in sorted((p for p in preds if p["class_id"] == c), key=lambda p: -p["confidence"]):
+            best_iou, best_gi = 0.0, None
+            for gi, gt_bbox in enumerate(gts_px):
+                if gi in matched:
+                    continue
+                iou = compute_iou(gt_bbox, pred["bbox"])
+                if iou >= 0.5 and iou > best_iou:
+                    best_iou, best_gi = iou, gi
+            if best_gi is not None:
+                matched.add(best_gi)
+                stats[c]["tp"] += 1
             else:
-                draw.rectangle(bbox, outline="blue", width=2)
-    
-    img.save(output_path)
+                stats[c]["fp"] += 1
+        stats[c]["fn"] = len(gts_c) - len(matched)
+    return stats
 
 
-def generate_report(fn_records, fp_records, output_dir):
-    """Generate summary report."""
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-    
-    # Compute metrics
-    tp_count = sum(1 for r in fn_records if r["category"] == "tp")
-    fn_count = len(fn_records) - tp_count
-    fp_count = len(fp_records)
-    
-    precision = tp_count / (tp_count + fp_count) if (tp_count + fp_count) > 0 else 0.0
-    recall = tp_count / (tp_count + fn_count) if (tp_count + fn_count) > 0 else 0.0
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
-    
-    # FN category distribution
-    fn_categories = defaultdict(int)
-    for r in fn_records:
-        fn_categories[r["category"]] += 1
-    
-    # FP category distribution
-    fp_categories = defaultdict(int)
-    for r in fp_records:
-        fp_categories[r["category"]] += 1
-    
-    # Size analysis
-    tp_areas = [r["gt_area_pct"] for r in fn_records if r["category"] == "tp"]
-    fn_areas = [r["gt_area_pct"] for r in fn_records if r["category"] != "tp"]
-    fp_areas = [r["pred_area_pct"] for r in fp_records]
-    
-    # Confidence analysis
-    tp_confs = [r["best_conf"] for r in fn_records if r["category"] == "tp"]
-    fp_confs = [r["pred_conf"] for r in fp_records]
-    low_conf_fns = [r["best_conf"] for r in fn_records if r["category"] == "low_confidence"]
-    
-    # Class confusion analysis
-    class_confusion_counts = defaultdict(int)
-    for r in fn_records:
-        if r["category"] == "class_confusion" and r["overlapping_class"] >= 0:
-            class_confusion_counts[r["overlapping_class"]] += 1
-    
-    # Background FP analysis
-    bg_fp_confs = [r["pred_conf"] for r in fp_records if r["category"] == "background_fp"]
-    
-    # Generate report
-    report = []
-    report.append("# Corrosion Error Analysis Report\n")
-    report.append(f"**Model:** seesaw_surgical_texture_refined/best.pt\n")
-    report.append(f"**Date:** Generated automatically\n")
-    report.append(f"**Test set size:** {len(set(r['image_name'] for r in fn_records + fp_records))} images\n")
-    report.append("\n")
-    
-    # Overall metrics
-    report.append("## Overall Metrics\n")
-    report.append("| Metric | Value |\n")
-    report.append("|--------|-------|\n")
-    report.append(f"| Precision | {precision:.4f} |\n")
-    report.append(f"| Recall | {recall:.4f} |\n")
-    report.append(f"| F1 Score | {f1:.4f} |\n")
-    report.append(f"| TP | {tp_count} |\n")
-    report.append(f"| FN | {fn_count} |\n")
-    report.append(f"| FP | {fp_count} |\n")
-    report.append("\n")
-    
-    # FN category distribution
-    report.append("## FN Category Distribution\n")
-    report.append("| Category | Count | Percentage |\n")
-    report.append("|----------|-------|------------|\n")
-    for cat in ["tp", "mislocalized", "low_confidence", "class_confusion", "completely_missed"]:
-        count = fn_categories.get(cat, 0)
-        pct = count / len(fn_records) * 100 if len(fn_records) > 0 else 0.0
-        report.append(f"| {cat} | {count} | {pct:.2f}% |\n")
-    report.append("\n")
-    
-    # FP category distribution
-    report.append("## FP Category Distribution\n")
-    report.append("| Category | Count | Percentage |\n")
-    report.append("|----------|-------|------------|\n")
-    for cat in ["background_fp", "class_confusion_fp", "localization_error", "duplicate"]:
-        count = fp_categories.get(cat, 0)
-        pct = count / len(fp_records) * 100 if len(fp_records) > 0 else 0.0
-        report.append(f"| {cat} | {count} | {pct:.2f}% |\n")
-    report.append("\n")
-    
-    # Size distribution
-    report.append("## Size Distribution (as % of image)\n")
-    report.append("| Set | Mean | Median | Min | Max |\n")
-    report.append("|-----|------|--------|-----|-----|\n")
-    
-    def stats(areas):
-        if not areas:
-            return "N/A", "N/A", "N/A", "N/A"
-        return (
-            f"{np.mean(areas):.4f}",
-            f"{np.median(areas):.4f}",
-            f"{np.min(areas):.4f}",
-            f"{np.max(areas):.4f}",
-        )
-    
-    report.append(f"| TP | {stats(tp_areas)[0]} | {stats(tp_areas)[1]} | {stats(tp_areas)[2]} | {stats(tp_areas)[3]} |\n")
-    report.append(f"| FN | {stats(fn_areas)[0]} | {stats(fn_areas)[1]} | {stats(fn_areas)[2]} | {stats(fn_areas)[3]} |\n")
-    report.append(f"| FP | {stats(fp_areas)[0]} | {stats(fp_areas)[1]} | {stats(fp_areas)[2]} | {stats(fp_areas)[3]} |\n")
-    report.append("\n")
-    
-    # Confidence distribution
-    report.append("## Confidence Distribution\n")
-    report.append("| Set | Mean |\n")
-    report.append("|-----|------|\n")
-    report.append(f"| TP | {np.mean(tp_confs):.4f} |\n") if tp_confs else report.append("| TP | N/A |\n")
-    report.append(f"| FP | {np.mean(fp_confs):.4f} |\n") if fp_confs else report.append("| FP | N/A |\n")
-    report.append(f"| Low-conf FN | {np.mean(low_conf_fns):.4f} |\n") if low_conf_fns else report.append("| Low-conf FN | N/A |\n")
-    report.append(f"| Background FP | {np.mean(bg_fp_confs):.4f} |\n") if bg_fp_confs else report.append("| Background FP | N/A |\n")
-    report.append("\n")
-    
-    # Class confusion summary
-    report.append("## Class Confusion Summary (Corrosion → Other)\n")
-    report.append("| Confused Class | Count |\n")
-    report.append("|----------------|-------|\n")
-    for class_id, count in sorted(class_confusion_counts.items(), key=lambda x: -x[1]):
-        report.append(f"| {CLASS_NAMES.get(class_id, f'class_{class_id}')} | {count} |\n")
-    if not class_confusion_counts:
-        report.append("| None | 0 |\n")
-    report.append("\n")
-    
-    # Diagnosis
-    report.append("## Diagnosis\n")
-    
-    completely_missed_pct = fn_categories.get("completely_missed", 0) / len(fn_records) * 100 if len(fn_records) > 0 else 0
-    low_conf_pct = fn_categories.get("low_confidence", 0) / len(fn_records) * 100 if len(fn_records) > 0 else 0
-    bg_fp_pct = fp_categories.get("background_fp", 0) / len(fp_records) * 100 if len(fp_records) > 0 else 0
-    class_conf_pct = fn_categories.get("class_confusion", 0) / len(fn_records) * 100 if len(fn_records) > 0 else 0
-    scratch_conf = class_confusion_counts.get(6, 0)
-    
-    median_fn_area = np.median(fn_areas) if fn_areas else 0
-    
-    if completely_missed_pct > 40:
-        report.append(f"- **⚠️ Model lacks feature sensitivity for corrosion texture** ({completely_missed_pct:.1f}% completely missed)\n")
-        report.append("  → Consider: SAHI slice training, P2 head, or more corrosion-specific augmentation.\n")
-    if low_conf_pct > 30:
-        report.append(f"- **⚠️ Model detects corrosion but lacks confidence** ({low_conf_pct:.1f}% low-confidence FNs)\n")
-        report.append("  → Consider: lowering inference threshold, adding objectness branch, or calibration.\n")
-    if bg_fp_pct > 30:
-        report.append(f"- **⚠️ Corrosion texture confused with paint/shadow/reflection** ({bg_fp_pct:.1f}% background FPs)\n")
-        report.append("  → Consider: hard-negative mining targeting those specific textures.\n")
-    if class_conf_pct > 20 and scratch_conf > 0:
-        report.append(f"- **⚠️ Boundary ambiguity between corrosion and scratch** ({class_conf_pct:.1f}% class confusion, {scratch_conf} with scratch)\n")
-        report.append("  → Consider: clarifying annotation spec or merging classes.\n")
-    if median_fn_area < 0.005:
-        report.append(f"- **⚠️ Resolution problem: small corrosion patches lost** (median FN area: {median_fn_area*100:.2f}%)\n")
-        report.append("  → Consider: SAHI or P2 head.\n")
-    elif median_fn_area > 0.05:
-        report.append(f"- **⚠️ Annotation inconsistency on large patches** (median FN area: {median_fn_area*100:.2f}%)\n")
-        report.append("  → Consider: auditing annotations.\n")
-    
-    if not (completely_missed_pct > 40 or low_conf_pct > 30 or bg_fp_pct > 30 or (class_conf_pct > 20 and scratch_conf > 0) or median_fn_area < 0.005 or median_fn_area > 0.05):
-        report.append("- No critical issues detected. Model performance is acceptable.\n")
-    
-    report.append("\n")
-    
-    # Saved files
-    report.append("## Saved Example Files\n")
-    report.append(f"- `reports/corrosion_error_analysis/fn_top30_*.png` — Top 30 FNs by GT area\n")
-    report.append(f"- `reports/corrosion_error_analysis/fp_top30_*.png` — Top 30 FPs by confidence\n")
-    report.append(f"- `reports/corrosion_error_analysis/background_fps/` — Top 15 background FPs\n")
-    report.append(f"- `reports/corrosion_error_analysis/class_confusion/` — Top 15 class confusion FNs\n")
-    report.append("\n")
-    
-    # Write report
-    with open(output_path / "summary.md", "w") as f:
-        f.write("".join(report))
-    
+def compute_map50(per_image):
+    """Pooled VOC-style AP at IoU=0.5 (11-point interpolation).
+
+    per_image: list of (gt_bboxes_px, corrosion_preds) per image.
+    """
+    n_gt = 0
+    flags = []
+    for gts_px, preds in per_image:
+        n_gt += len(gts_px)
+        matched = set()
+        for pred in sorted(preds, key=lambda p: -p["confidence"]):
+            best_iou, best_gi = 0.0, None
+            for gi, gt_bbox in enumerate(gts_px):
+                if gi in matched:
+                    continue
+                iou = compute_iou(gt_bbox, pred["bbox"])
+                if iou >= 0.5 and iou > best_iou:
+                    best_iou, best_gi = iou, gi
+            if best_gi is not None:
+                matched.add(best_gi)
+                flags.append((pred["confidence"], 1.0))
+            else:
+                flags.append((pred["confidence"], 0.0))
+    if n_gt == 0 or not flags:
+        return 0.0
+    flags.sort(key=lambda x: -x[0])
+    tp = np.array([f[1] for f in flags])
+    fp = 1.0 - tp
+    tp_cum, fp_cum = np.cumsum(tp), np.cumsum(fp)
+    recall = tp_cum / n_gt
+    precision = tp_cum / (tp_cum + fp_cum)
+    ap = 0.0
+    for t in [i / 10 for i in range(11)]:
+        idx = np.where(recall >= t)[0]
+        if len(idx):
+            ap += precision[idx].max()
+    return ap / 11.0
+
+
+def _size_stats(values):
+    if not values:
+        return None
+    a = np.array(values, dtype=float)
+    return (float(np.mean(a)), float(np.median(a)), float(np.min(a)), float(np.max(a)))
+
+
+def _mean(values):
+    return float(np.mean(values)) if values else None
+
+
+def build_stats(fn_records, fp_records, map50, cross):
+    tp_recs = [r for r in fn_records if r["category"] == "tp"]
+    fn_recs = [r for r in fn_records if r["category"] != "tp"]
+    tp_n, fn_n, fp_n = len(tp_recs), len(fn_recs), len(fp_records)
+    precision = tp_n / (tp_n + fp_n) if (tp_n + fp_n) else 0.0
+    recall = tp_n / (tp_n + fn_n) if (tp_n + fn_n) else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+
+    fn_cats = Counter(r["category"] for r in fn_recs)
+    fp_cats = Counter(r["category"] for r in fp_records)
+
     return {
-        "precision": precision,
-        "recall": recall,
-        "f1": f1,
-        "tp": tp_count,
-        "fn": fn_count,
-        "fp": fp_count,
+        "precision": precision, "recall": recall, "f1": f1, "map50": map50,
+        "tp": tp_n, "fn": fn_n, "fp": fp_n,
+        "fn_cats": dict(fn_cats), "fp_cats": dict(fp_cats),
+        "tp_areas": _size_stats([r["gt_area_pct"] for r in tp_recs]),
+        "fn_areas": _size_stats([r["gt_area_pct"] for r in fn_recs]),
+        "fp_areas": _size_stats([r["pred_area_pct"] for r in fp_records]),
+        "tp_conf": _mean([r["best_conf"] for r in tp_recs]),
+        "fp_conf": _mean([r["pred_conf"] for r in fp_records]),
+        "lowconf_fn_conf": _mean([r["best_conf"] for r in fn_recs if r["category"] == "low_confidence"]),
+        "bg_fp_conf": _mean([r["pred_conf"] for r in fp_records if r["category"] == "background_fp"]),
+        "scratch_confusion_fn": sum(
+            1 for r in fn_recs if r["category"] == "class_confusion" and r["overlapping_class"] == 6),
+        "fn_confused_as": dict(Counter(
+            r["overlapping_class"] for r in fn_recs if r["category"] == "class_confusion")),
+        "fp_over": dict(Counter(
+            r["overlapping_gt_class"] for r in fp_records if r["category"] == "class_confusion_fp")),
+        "cross": cross,
     }
+
+
+def _overlay_mask(arr, mask, color, alpha=0.5):
+    m = np.asarray(mask) > 0.5
+    if m.shape != arr.shape[:2]:
+        m = np.array(Image.fromarray((m.astype(np.uint8)) * 255).resize(
+            (arr.shape[1], arr.shape[0]))) > 127
+    arr[m] = arr[m] * (1 - alpha) + np.array(color, dtype=float) * alpha
+
+
+def draw_fn_example(img_path, gt, out_path, confusion_pred=None):
+    img = Image.open(img_path).convert("RGB")
+    w, h = img.size
+    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    od = ImageDraw.Draw(overlay)
+    od.polygon([(x * w, y * h) for x, y in gt["polygon"]], fill=(0, 255, 0, 100))
+    od.rectangle([int(gt["bbox"][0] * w), int(gt["bbox"][1] * h),
+                  int(gt["bbox"][2] * w), int(gt["bbox"][3] * h)], outline=(0, 255, 0), width=3)
+    if confusion_pred is not None:
+        od.rectangle([int(v) for v in confusion_pred["bbox"]], outline=(0, 0, 255), width=3)
+    img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+    img.save(out_path)
+
+
+def draw_fp_example(img_path, pred, out_path):
+    img = Image.open(img_path).convert("RGB")
+    if "mask" in pred:
+        arr = np.array(img)
+        _overlay_mask(arr, pred["mask"], (255, 0, 0))
+        img = Image.fromarray(arr)
+    od = ImageDraw.Draw(img)
+    od.rectangle([int(v) for v in pred["bbox"]], outline=(255, 0, 0), width=3)
+    img.save(out_path)
+
+
+def _find_confusing_pred(preds, gt_bbox_px, cls_id):
+    best, best_iou = None, 0.0
+    for p in preds:
+        if p["class_id"] != cls_id:
+            continue
+        iou = compute_iou(gt_bbox_px, p["bbox"])
+        if iou >= 0.3 and iou > best_iou:
+            best, best_iou = p, iou
+    return best
+
+
+def save_examples(image_paths_by_name, preds_by_image, fn_records, fp_records, out_dir):
+    (out_dir / "background_fps").mkdir(parents=True, exist_ok=True)
+    (out_dir / "class_confusion").mkdir(parents=True, exist_ok=True)
+    saved = []
+
+    fns = sorted((r for r in fn_records if r["category"] != "tp"), key=lambda r: -r["gt_area_pct"])
+    for rank, rec in enumerate(fns[:30], 1):
+        name = rec["image_name"]
+        confusion = None
+        if rec["category"] == "class_confusion":
+            confusion = _find_confusing_pred(preds_by_image[name], rec["_gt_bbox_px"], rec["overlapping_class"])
+        out = out_dir / f"fn_{rank:02d}_{rec['category']}_{name}"
+        draw_fn_example(image_paths_by_name[name], rec["_gt"], out, confusion)
+        saved.append(str(out))
+
+    fps = sorted(fp_records, key=lambda r: -r["pred_conf"])
+    for rank, rec in enumerate(fps[:30], 1):
+        out = out_dir / f"fp_{rank:02d}_{rec['category']}_{rec['image_name']}"
+        draw_fp_example(image_paths_by_name[rec["image_name"]], rec["_pred"], out)
+        saved.append(str(out))
+
+    bg = sorted((r for r in fp_records if r["category"] == "background_fp"), key=lambda r: -r["pred_conf"])
+    for rank, rec in enumerate(bg[:15], 1):
+        out = out_dir / "background_fps" / f"fp_{rank:02d}_{rec['image_name']}"
+        draw_fp_example(image_paths_by_name[rec["image_name"]], rec["_pred"], out)
+        saved.append(str(out))
+
+    cc = sorted((r for r in fn_records if r["category"] == "class_confusion"), key=lambda r: -r["gt_area_pct"])
+    for rank, rec in enumerate(cc[:15], 1):
+        name = rec["image_name"]
+        confusion = _find_confusing_pred(preds_by_image[name], rec["_gt_bbox_px"], rec["overlapping_class"])
+        out = out_dir / "class_confusion" / f"fn_{rank:02d}_{name}"
+        draw_fn_example(image_paths_by_name[name], rec["_gt"], out, confusion)
+        saved.append(str(out))
+
+    return saved
+
+
+def generate_report(model_path, test_count, stats, saved_files, out_dir):
+    L = []
+    L.append("# Corrosion Error Analysis Report\n")
+    L.append(f"- **Checkpoint:** `{model_path}`")
+    L.append(f"- **Date:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    L.append(f"- **Test set size:** {test_count} images\n")
+
+    L.append("## Overall Metrics (corrosion, IoU=0.5)\n")
+    L.append("| Metric | Value |")
+    L.append("|---|---|")
+    L.append(f"| Precision | {stats['precision']:.4f} |")
+    L.append(f"| Recall | {stats['recall']:.4f} |")
+    L.append(f"| F1 | {stats['f1']:.4f} |")
+    L.append(f"| mAP50 | {stats['map50']:.4f} |")
+    L.append(f"| TP / FN / FP | {stats['tp']} / {stats['fn']} / {stats['fp']} |\n")
+
+    L.append("## FN Categories\n")
+    L.append("| Category | Count | % of FNs |")
+    L.append("|---|---|---|")
+    for cat in ["mislocalized", "low_confidence", "class_confusion", "completely_missed"]:
+        n = stats["fn_cats"].get(cat, 0)
+        pct = 100.0 * n / stats["fn"] if stats["fn"] else 0.0
+        L.append(f"| {cat} | {n} | {pct:.1f}% |")
+    L.append("")
+
+    L.append("## FP Categories\n")
+    L.append("| Category | Count | % of FPs |")
+    L.append("|---|---|---|")
+    for cat in ["background_fp", "class_confusion_fp", "localization_error", "duplicate"]:
+        n = stats["fp_cats"].get(cat, 0)
+        pct = 100.0 * n / stats["fp"] if stats["fp"] else 0.0
+        L.append(f"| {cat} | {n} | {pct:.1f}% |")
+    L.append("")
+
+    L.append("## Size Distribution (bbox area, % of image)\n")
+    L.append("| Set | Mean | Median | Min | Max |")
+    L.append("|---|---|---|---|---|")
+    for label, key in [("TP", "tp_areas"), ("FN", "fn_areas"), ("FP", "fp_areas")]:
+        s = stats[key]
+        if s:
+            L.append(f"| {label} | {s[0]:.3f} | {s[1]:.3f} | {s[2]:.3f} | {s[3]:.3f} |")
+        else:
+            L.append(f"| {label} | N/A | N/A | N/A | N/A |")
+    L.append("")
+
+    L.append("## Confidence\n")
+    L.append("| Set | Mean conf |")
+    L.append("|---|---|")
+    for label, key in [("TP", "tp_conf"), ("FP", "fp_conf"),
+                       ("Low-conf FN", "lowconf_fn_conf"), ("Background FP", "bg_fp_conf")]:
+        v = stats[key]
+        L.append(f"| {label} | {v:.4f} |" if v is not None else f"| {label} | N/A |")
+    L.append("")
+
+    L.append("## Cross-Class Confusion Matrix (IoU=0.5)\n")
+    L.append("| Class | TP | FP | FN |")
+    L.append("|---|---|---|---|")
+    for c in sorted(CLASS_NAMES):
+        s = stats["cross"][c]
+        L.append(f"| {CLASS_NAMES[c]} | {s['tp']} | {s['fp']} | {s['fn']} |")
+    L.append("")
+    confused_as = ", ".join(
+        f"{CLASS_NAMES[c]} ({n})" for c, n in sorted(stats["fn_confused_as"].items(), key=lambda x: -x[1]))
+    fp_over = ", ".join(
+        f"{CLASS_NAMES[c]} ({n})" for c, n in sorted(stats["fp_over"].items(), key=lambda x: -x[1]))
+    L.append(f"- Corrosion GTs predicted as: {confused_as or 'none'}")
+    L.append(f"- Corrosion FPs overlapping GTs of: {fp_over or 'none'}\n")
+
+    L.append("## Diagnosis\n")
+    fn_n, fp_n = stats["fn"], stats["fp"]
+    fn_cats, fp_cats = stats["fn_cats"], stats["fp_cats"]
+    diag = []
+    if fn_n and fn_cats.get("completely_missed", 0) / fn_n > 0.40:
+        diag.append(f"Model lacks feature sensitivity for corrosion texture "
+                    f"({100.0 * fn_cats['completely_missed'] / fn_n:.0f}% of FNs completely missed). "
+                    f"Consider: SAHI slice training, P2 head, or more corrosion-specific augmentation.")
+    if fn_n and fn_cats.get("low_confidence", 0) / fn_n > 0.30:
+        diag.append(f"Model detects corrosion but lacks confidence "
+                    f"({100.0 * fn_cats['low_confidence'] / fn_n:.0f}% of FNs low-confidence). "
+                    f"Consider: lowering inference threshold, adding objectness branch, or calibration.")
+    if fp_n and fp_cats.get("background_fp", 0) / fp_n > 0.30:
+        diag.append(f"Corrosion texture confused with paint/shadow/reflection "
+                    f"({100.0 * fp_cats['background_fp'] / fp_n:.0f}% of FPs are background FPs). "
+                    f"Consider: hard-negative mining targeting those specific textures.")
+    if fn_n and stats["scratch_confusion_fn"] / fn_n > 0.20:
+        diag.append(f"Boundary ambiguity between corrosion and scratch "
+                    f"({100.0 * stats['scratch_confusion_fn'] / fn_n:.0f}% of FNs are class confusion with scratch). "
+                    f"Consider: clarifying annotation spec or merging classes.")
+    fn_med = stats["fn_areas"][1] if stats["fn_areas"] else None
+    if fn_med is not None and fn_med < 0.5:
+        diag.append(f"Resolution problem: small corrosion patches lost in downsampling "
+                    f"(median FN area {fn_med:.2f}%). Consider: SAHI or P2 head.")
+    if fn_med is not None and fn_med > 5.0:
+        diag.append(f"Annotation inconsistency on large patches "
+                    f"(median FN area {fn_med:.2f}%). Consider: auditing annotations.")
+    if not diag:
+        diag.append("No critical failure mode dominates. Model performance is acceptable.")
+    for d in diag:
+        L.append(f"- {d}")
+    L.append("")
+
+    L.append("## Saved Example Files\n")
+    for f in saved_files:
+        L.append(f"- `{f}`")
+    L.append("")
+
+    (out_dir / "summary.md").write_text("\n".join(L))
+
+
+def write_csvs(out_dir, fn_records, fp_records, model_path, test_count, stats):
+    with open(out_dir / "fn_records.csv", "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["image_name", "category", "gt_area_pct",
+                                               "gt_aspect_ratio", "best_iou", "best_conf",
+                                               "overlapping_class"], extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(fn_records)
+
+    with open(out_dir / "fp_records.csv", "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["image_name", "category", "pred_conf",
+                                               "pred_area_pct", "overlapping_gt_class",
+                                               "iou_with_gt"], extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(fp_records)
+
+    rows = [
+        ("model_path", model_path),
+        ("date", datetime.now().strftime("%Y-%m-%d %H:%M")),
+        ("test_images", test_count),
+        ("precision", f"{stats['precision']:.4f}"),
+        ("recall", f"{stats['recall']:.4f}"),
+        ("f1", f"{stats['f1']:.4f}"),
+        ("map50", f"{stats['map50']:.4f}"),
+        ("tp", stats["tp"]), ("fn", stats["fn"]), ("fp", stats["fp"]),
+    ]
+    for cat, n in sorted(stats["fn_cats"].items()):
+        rows.append((f"fn_{cat}", n))
+    for cat, n in sorted(stats["fp_cats"].items()):
+        rows.append((f"fp_{cat}", n))
+    for key in ("tp_conf", "fp_conf", "lowconf_fn_conf", "bg_fp_conf"):
+        v = stats[key]
+        rows.append((key, f"{v:.4f}" if v is not None else ""))
+    for key in ("tp_areas", "fn_areas", "fp_areas"):
+        s = stats[key]
+        for i, name in enumerate(("mean", "median", "min", "max")):
+            rows.append((f"{key[:-5]}_area_{name}_pct", f"{s[i]:.4f}" if s else ""))
+    with open(out_dir / "summary_stats.csv", "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["metric", "value"])
+        w.writerows(rows)
 
 
 def main():
     print("=" * 80)
     print("CORROSION ERROR ANALYSIS")
     print("=" * 80)
-    
-    # Paths (relative to project root)
-    # Training output went to runs/segment/runs/segment/... (nested path)
-    model_path = "runs/segment/runs/segment/car_defect_detection/seesaw_surgical_texture_refined/weights/best.pt"
-    images_dir = "data/processed/yolo_seg/images/test"
-    labels_dir = "data/processed/yolo_seg/labels/test"
-    output_dir = "reports/corrosion_error_analysis"
-    
-    # Load model
-    print("[*] Loading model...")
+
+    model_path = resolve_model_path()
+    print(f"[*] Model: {model_path}")
     model = YOLO(model_path)
-    
-    # Load ground truths
-    print("[*] Loading ground truths...")
-    gt_by_image = load_ground_truths(labels_dir)
-    print(f"    Loaded {len(gt_by_image)} images with annotations")
-    
-    # Run inference
-    print("[*] Running inference...")
-    preds_by_image = run_inference(model, images_dir)
-    print(f"    Processed {len(preds_by_image)} images")
-    
-    # Analyze errors
-    print("[*] Analyzing errors...")
-    all_fn_records = []
-    all_fp_records = []
-    
-    for image_name, gts in gt_by_image.items():
-        if image_name not in preds_by_image:
+
+    image_paths = list_images(IMAGES_DIR)
+    if not image_paths:
+        sys.exit(f"ERROR: no images found in {IMAGES_DIR}")
+    print(f"[*] Test images: {len(image_paths)}")
+    image_paths_by_name = {p.name: p for p in image_paths}
+
+    gts_by_image = load_ground_truths(LABELS_DIR, image_paths)
+    print(f"[*] Images with annotations: {sum(1 for v in gts_by_image.values() if v)}")
+
+    print("[*] Running inference (pass 1, boxes only)...")
+    preds_by_image = run_inference(model, image_paths, keep_masks=False)
+
+    all_fn, all_fp = [], []
+    cross = {c: {"tp": 0, "fp": 0, "fn": 0} for c in CLASS_NAMES}
+    map50_per_image = []
+
+    for img_path in image_paths:
+        name = img_path.name
+        gts = gts_by_image[name]
+        preds = preds_by_image[name]
+        try:
+            with Image.open(img_path) as im:
+                img_w, img_h = im.size
+        except Exception as e:
+            print(f"  [!] Skipping unreadable image {name}: {e}")
             continue
-        
-        preds = preds_by_image[image_name]
-        img = Image.open(Path(images_dir) / image_name)
-        img_w, img_h = img.size
-        
-        fn_records, fp_records = categorize_corrosion_errors(gts, preds, img_w, img_h)
-        all_fn_records.extend(fn_records)
-        all_fp_records.extend(fp_records)
-    
-    print(f"    Found {len(all_fn_records)} corrosion errors")
-    print(f"    TP: {sum(1 for r in all_fn_records if r['category'] == 'tp')}")
-    print(f"    FN: {len(all_fn_records) - sum(1 for r in all_fn_records if r['category'] == 'tp')}")
-    print(f"    FP: {len(all_fp_records)}")
-    
-    # Generate report
+        fn, fp = categorize_corrosion_errors(name, gts, preds, img_w, img_h)
+        all_fn.extend(fn)
+        all_fp.extend(fp)
+        cs = cross_class_stats(gts, preds, img_w, img_h)
+        for c in cross:
+            for k in ("tp", "fp", "fn"):
+                cross[c][k] += cs[c][k]
+        corr_gts_px = [(gt["bbox"][0] * img_w, gt["bbox"][1] * img_h,
+                        gt["bbox"][2] * img_w, gt["bbox"][3] * img_h)
+                       for gt in gts if gt["class_id"] == CORROSION]
+        map50_per_image.append((corr_gts_px, [p for p in preds if p["class_id"] == CORROSION]))
+
+    map50 = compute_map50(map50_per_image)
+    print(f"[*] Corrosion: TP={sum(1 for r in all_fn if r['category'] == 'tp')} "
+          f"FN={sum(1 for r in all_fn if r['category'] != 'tp')} FP={len(all_fp)} mAP50={map50:.4f}")
+
+    # Pass 2: re-run inference with masks only for images that need FP visualizations
+    fps_sorted = sorted(all_fp, key=lambda r: -r["pred_conf"])
+    bg_sorted = sorted((r for r in all_fp if r["category"] == "background_fp"), key=lambda r: -r["pred_conf"])
+    need_mask = {r["image_name"] for r in fps_sorted[:30]} | {r["image_name"] for r in bg_sorted[:15]}
+    if need_mask:
+        print(f"[*] Running inference (pass 2, masks) on {len(need_mask)} example images...")
+        fresh = run_inference(model, [image_paths_by_name[n] for n in sorted(need_mask)], keep_masks=True)
+        preds_by_image.update(fresh)
+        for rec in all_fp:  # re-link _pred refs to the masked pred objects
+            if rec["image_name"] not in fresh:
+                continue
+            old = rec["_pred"]
+            for p in fresh[rec["image_name"]]:
+                if p["class_id"] == old["class_id"] and p["bbox"] == old["bbox"]:
+                    rec["_pred"] = p
+                    break
+
+    out_dir = Path(OUTPUT_DIR)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    print("[*] Saving visual examples...")
+    saved_files = save_examples(image_paths_by_name, preds_by_image, all_fn, all_fp, out_dir)
+
     print("[*] Generating report...")
-    stats = generate_report(all_fn_records, all_fp_records, output_dir)
-    
-    # Save CSVs
-    fn_df = Path(output_dir) / "fn_records.csv"
-    with open(fn_df, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["image_name", "category", "gt_area_pct", "gt_aspect_ratio", "best_iou", "best_conf", "overlapping_class"])
-        writer.writeheader()
-        writer.writerows(all_fn_records)
-    
-    fp_df = Path(output_dir) / "fp_records.csv"
-    with open(fp_df, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["image_name", "category", "pred_conf", "pred_area_pct", "overlapping_gt_class", "iou_with_gt"])
-        writer.writeheader()
-        writer.writerows(all_fp_records)
-    
-    summary_stats = Path(output_dir) / "summary_stats.csv"
-    with open(summary_stats, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["metric", "value"])
-        writer.writerow(["precision", f"{stats['precision']:.4f}"])
-        writer.writerow(["recall", f"{stats['recall']:.4f}"])
-        writer.writerow(["f1", f"{stats['f1']:.4f}"])
-        writer.writerow(["tp", stats["tp"]])
-        writer.writerow(["fn", stats["fn"]])
-        writer.writerow(["fp", stats["fp"]])
-    
-    print(f"\nCORROSION ERROR ANALYSIS COMPLETE — check {output_dir}/summary.md")
+    stats = build_stats(all_fn, all_fp, map50, cross)
+    generate_report(model_path, len(image_paths), stats, saved_files, out_dir)
+    write_csvs(out_dir, all_fn, all_fp, model_path, len(image_paths), stats)
+
+    print(f"\nCORROSION ERROR ANALYSIS COMPLETE — check {OUTPUT_DIR}/summary.md")
 
 
 if __name__ == "__main__":
