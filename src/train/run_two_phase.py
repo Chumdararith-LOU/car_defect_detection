@@ -129,7 +129,8 @@ def build_car_only_test(cfg: dict) -> None:
                 lbl_dst.touch()
         n += 1
     (out_dir / "data.yaml").write_text(
-        "path: .\nval: images\nnames:\n" + "".join(f"  {i}: {c}\n" for i, c in enumerate(SEVEN_CLASSES))
+        f"path: {out_dir.resolve()}\nval: images\nnames:\n"
+        + "".join(f"  {i}: {c}\n" for i, c in enumerate(SEVEN_CLASSES))
     )
     print(f"[data] car-only test set: {n}/{len(names)} images -> {ev['car_only_test_dir']}")
 
@@ -150,10 +151,22 @@ def run_phase(cfg: dict, phase: str) -> Path:
     fd, tmp = tempfile.mkstemp(suffix=".yaml", prefix=f"two_phase_{phase}_")
     with os.fdopen(fd, "w") as f:
         yaml.safe_dump(flat, f)
+    # dataset data.yaml uses 'path: .' which ultralytics resolves against CWD,
+    # not the yaml's directory — pass a temp copy with an absolute path
+    ds_src = REPO_ROOT / flat["dataset_config"]
+    ds = yaml.safe_load(ds_src.read_text())
+    ds["path"] = str(ds_src.parent.resolve())
+    fd2, tmp_data = tempfile.mkstemp(suffix=".yaml", prefix=f"two_phase_{phase}_data_")
+    with os.fdopen(fd2, "w") as f:
+        yaml.safe_dump(ds, f)
     try:
-        subprocess.run([sys.executable, "src/train/train.py", "--config", tmp], check=True, cwd=REPO_ROOT)
+        subprocess.run(
+            [sys.executable, "src/train/train.py", "--config", tmp, "--data", tmp_data],
+            check=True, cwd=REPO_ROOT,
+        )
     finally:
         os.unlink(tmp)
+        os.unlink(tmp_data)
     # ultralytics appends -2, -3 ... on run-name collision; take the newest best.pt
     candidates = sorted(
         (REPO_ROOT / "runs/segment" / flat["project_name"]).glob(f"{flat['run_name']}*/weights/best.pt"),
