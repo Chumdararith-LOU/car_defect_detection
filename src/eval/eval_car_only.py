@@ -75,10 +75,16 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
+    # predict at the lowest FPR threshold, not 0.001: conf=0.001 yields hundreds
+    # of detections per image and each mask upsample is ~1GB. NMS is greedy by
+    # confidence, so a run at conf=T0 is exactly equivalent to post-hoc
+    # thresholding at any T >= T0 (same fact used by threshold_sweep.py).
+    pred_conf = min(thresholds)
+
     # --- 2. clean-image FPR ---
     clean_dir = _PROJECT_ROOT / args.clean_dir
     clean_imgs = sorted(p.name for p in clean_dir.iterdir() if p.suffix.lower() in IMG_EXTS)
-    preds = model.predict(source=str(clean_dir), conf=0.001, imgsz=args.imgsz, batch=1, device="cpu", verbose=False)
+    preds = model.predict(source=str(clean_dir), conf=pred_conf, imgsz=args.imgsz, batch=1, device="cpu", verbose=False)
     clean_max = [max_corrosion_conf(r) for r in preds]
     fpr = {t: float(np.mean([m >= t for m in clean_max])) for t in thresholds}
 
@@ -88,7 +94,7 @@ def main():
         noncar_names = [l.strip() for l in (_PROJECT_ROOT / args.noncar_list).read_text().splitlines() if l.strip()]
         noncar_dir = _PROJECT_ROOT / "data/processed/yolo_seg/images/test"
         srcs = [str(noncar_dir / n) for n in noncar_names if (noncar_dir / n).exists()]
-        preds = model.predict(source=srcs, conf=0.001, imgsz=args.imgsz, batch=1, device="cpu", verbose=False)
+        preds = model.predict(source=srcs, conf=pred_conf, imgsz=args.imgsz, batch=1, device="cpu", verbose=False)
         noncar_max = [max_corrosion_conf(r) for r in preds]
         noncar_rate = {t: float(np.mean([m >= t for m in noncar_max])) for t in thresholds}
 
