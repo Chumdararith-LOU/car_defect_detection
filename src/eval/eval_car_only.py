@@ -4,8 +4,14 @@ the clean-image false-positive rate.
 
   - per-class Mask mAP50 / P / R / F1 on the car-only test split
   - clean-image FPR: fraction of clean-car eval images with >=1 corrosion
-    detection at each threshold (single conf=0.001 pass, post-hoc thresholding)
+    detection at each threshold (single pass at the lowest threshold,
+    post-hoc thresholding — NMS-greedy equivalence)
   - secondary: corrosion detection rate on non-car test images
+
+Memory: predict streams one result at a time and discards it after reading the
+boxes. Full-resolution masks are never accumulated (that is what OOM'd a 24GB
+card: model.predict(dir) materializes every image's original-resolution masks).
+Peak VRAM ~= model + one image.
 """
 
 import argparse
@@ -14,6 +20,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import torch
 import yaml
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -28,14 +35,21 @@ CORROSION = 1
 IMG_EXTS = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
 
 
-def max_corrosion_conf(result) -> float:
-    boxes = result.boxes
-    if boxes is None or len(boxes) == 0:
-        return 0.0
-    cls = boxes.cls.cpu().numpy()
-    conf = boxes.conf.cpu().numpy()
-    corr = conf[cls == CORROSION]
-    return float(corr.max()) if len(corr) else 0.0
+def max_corrosion_confs(model, source, conf, imgsz, device):
+    """Per-image max corrosion confidence. Streams results and discards each
+    one after reading its boxes — only boxes are ever kept, never masks."""
+    maxes = []
+    for result in model.predict(source=source, conf=conf, imgsz=imgsz, batch=1,
+                                stream=True, device=device, verbose=False):
+        boxes = result.boxes
+        m = 0.0
+        if boxes is not None and len(boxes) > 0:
+            corr = boxes.conf[boxes.cls == CORROSION]
+            if len(corr) > 0:
+                m = float(corr.max())
+        maxes.append(m)
+        del result
+    return maxes
 
 
 def main():
@@ -46,10 +60,13 @@ def main():
     ap.add_argument("--noncar-list", default=None)
     ap.add_argument("--imgsz", type=int, default=1024)
     ap.add_argument("--fpr-thresholds", default="0.15,0.25")
+    ap.add_argument("--val-batch", type=int, default=4,
+                    help="val batch size; use 2 on 8GB cards")
     ap.add_argument("--baseline", default="")
     ap.add_argument("--out", default="reports/clean_retrain_augmented_eval.md")
     args = ap.parse_args()
 
+    device = 0 if torch.cuda.is_available() else "cpu"
     model = YOLO(str(_PROJECT_ROOT / args.weights))
     thresholds = [float(t) for t in args.fpr_thresholds.split(",")]
 
@@ -57,7 +74,8 @@ def main():
     car_data = _PROJECT_ROOT / args.car_test_data
     ds = yaml.safe_load(car_data.read_text())
     names = ds["names"]
-    results = model.val(data=str(car_data), imgsz=args.imgsz, conf=0.001, batch=8, device=0, verbose=False)
+    results = model.val(data=str(car_data), imgsz=args.imgsz, conf=0.001,
+                        batch=args.val_batch, device=device, verbose=False)
     seg = results.seg
     rows = []
     for i, c in enumerate(seg.ap_class_index):
@@ -65,13 +83,7 @@ def main():
         f1 = 2 * p * r / (p + r) if (p + r) > 0 else 0.0
         rows.append((names[c], float(seg.ap50[i]), p, r, f1))
     rows.sort(key=lambda x: x[0])
-
-    # val's validator state pins ~20GB in the CUDA caching allocator; the predict
-    # passes run on CPU (291 images, a few minutes) to avoid the OOM entirely
     del results
-    import gc
-    import torch
-    gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
@@ -84,8 +96,7 @@ def main():
     # --- 2. clean-image FPR ---
     clean_dir = _PROJECT_ROOT / args.clean_dir
     clean_imgs = sorted(p.name for p in clean_dir.iterdir() if p.suffix.lower() in IMG_EXTS)
-    preds = model.predict(source=str(clean_dir), conf=pred_conf, imgsz=args.imgsz, batch=1, device="cpu", verbose=False)
-    clean_max = [max_corrosion_conf(r) for r in preds]
+    clean_max = max_corrosion_confs(model, str(clean_dir), pred_conf, args.imgsz, device)
     fpr = {t: float(np.mean([m >= t for m in clean_max])) for t in thresholds}
 
     # --- 3. secondary: non-car test images ---
@@ -94,8 +105,7 @@ def main():
         noncar_names = [l.strip() for l in (_PROJECT_ROOT / args.noncar_list).read_text().splitlines() if l.strip()]
         noncar_dir = _PROJECT_ROOT / "data/processed/yolo_seg/images/test"
         srcs = [str(noncar_dir / n) for n in noncar_names if (noncar_dir / n).exists()]
-        preds = model.predict(source=srcs, conf=pred_conf, imgsz=args.imgsz, batch=1, device="cpu", verbose=False)
-        noncar_max = [max_corrosion_conf(r) for r in preds]
+        noncar_max = max_corrosion_confs(model, srcs, pred_conf, args.imgsz, device)
         noncar_rate = {t: float(np.mean([m >= t for m in noncar_max])) for t in thresholds}
 
     # --- report ---
