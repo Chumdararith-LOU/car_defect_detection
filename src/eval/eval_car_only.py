@@ -62,19 +62,25 @@ def max_corrosion_confs(model, source, conf, imgsz, device, empty_cache_every=20
     later large allocation even though "enough" memory looks free in nvidia-smi.
     """
     maxes = []
-    for i, result in enumerate(model.predict(source=source, conf=conf, imgsz=imgsz,
-                                             batch=1, stream=True, device=device,
-                                             verbose=False)):
-        boxes = result.boxes
-        m = 0.0
-        if boxes is not None and len(boxes) > 0:
-            corr = boxes.conf[boxes.cls == CORROSION]
-            if len(corr) > 0:
-                m = float(corr.max())
-        maxes.append(m)
-        del result
-        if empty_cache_every and (i + 1) % empty_cache_every == 0 and torch.cuda.is_available():
-            torch.cuda.empty_cache()
+    with torch.inference_mode():
+        for i, result in enumerate(model.predict(source=source, conf=conf, imgsz=imgsz,
+                                                 batch=1, stream=True, device=device,
+                                                 verbose=False)):
+            boxes = result.boxes
+            m = 0.0
+            if boxes is not None and len(boxes) > 0:
+                corr = boxes.conf[boxes.cls == CORROSION]
+                if len(corr) > 0:
+                    m = float(corr.max())
+            maxes.append(m)
+            del result
+            if torch.cuda.is_available() and (i + 1) % 20 == 0:
+                alloc = torch.cuda.memory_allocated() / 1e9
+                reserv = torch.cuda.memory_reserved() / 1e9
+                print(f"[mem] after {i+1:5d} images: allocated={alloc:.2f} GiB reserved={reserv:.2f} GiB",
+                      file=sys.stderr)
+            if empty_cache_every and (i + 1) % empty_cache_every == 0 and torch.cuda.is_available():
+                torch.cuda.empty_cache()
     return maxes
 
 
