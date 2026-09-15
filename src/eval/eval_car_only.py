@@ -131,14 +131,22 @@ def main():
     fpr = {t: float(np.mean([m >= t for m in clean_max])) for t in thresholds}
     _reset_cuda(model)
 
-    # --- 3. secondary: non-car test images ---
+    # --- 3. secondary: non-car test images (best-effort — primary results must
+    # always be written even if this pass fails) ---
     noncar_rate = None
+    noncar_error = None
     if args.noncar_list:
         noncar_names = [l.strip() for l in (_PROJECT_ROOT / args.noncar_list).read_text().splitlines() if l.strip()]
         noncar_dir = _PROJECT_ROOT / "data/processed/yolo_seg/images/test"
         srcs = [str(noncar_dir / n) for n in noncar_names if (noncar_dir / n).exists()]
-        noncar_max = max_corrosion_confs(model, srcs, pred_conf, args.imgsz, device)
-        noncar_rate = {t: float(np.mean([m >= t for m in noncar_max])) for t in thresholds}
+        try:
+            noncar_max = max_corrosion_confs(model, srcs, pred_conf, args.imgsz, device)
+            noncar_rate = {t: float(np.mean([m >= t for m in noncar_max])) for t in thresholds}
+        except Exception as e:
+            noncar_error = f"{type(e).__name__}: {e}"
+            print(f"[eval] WARNING: non-car pass failed ({noncar_error}); continuing without it")
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     # --- report ---
     lines = [
@@ -170,6 +178,8 @@ def main():
         lines += ["", "## Non-car test images (secondary)", "", "| threshold | detection rate |", "|---|---|"]
         for t in thresholds:
             lines.append(f"| {t} | {noncar_rate[t]:.4f} |")
+    elif noncar_error is not None:
+        lines += ["", "## Non-car test images (secondary)", "", f"FAILED: {noncar_error}", ""]
     if args.baseline:
         lines += ["", f"Baseline: {args.baseline} Mask mAP50", ""]
     out = _PROJECT_ROOT / args.out
