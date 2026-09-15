@@ -129,8 +129,9 @@ def build_car_only_test(cfg: dict) -> None:
             else:
                 lbl_dst.touch()
         n += 1
+    # vendor check_det_dataset requires both 'train' and 'val' keys
     (out_dir / "data.yaml").write_text(
-        f"path: {out_dir.resolve()}\nval: images\nnames:\n"
+        f"path: {out_dir.resolve()}\ntrain: images\nval: images\nnames:\n"
         + "".join(f"  {i}: {c}\n" for i, c in enumerate(SEVEN_CLASSES))
     )
     print(f"[data] car-only test set: {n}/{len(names)} images -> {ev['car_only_test_dir']}")
