@@ -15,6 +15,7 @@ Peak VRAM ~= model + one image.
 """
 
 import argparse
+import gc
 import os
 import sys
 from pathlib import Path
@@ -35,12 +36,35 @@ CORROSION = 1
 IMG_EXTS = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
 
 
-def max_corrosion_confs(model, source, conf, imgsz, device):
+def _reset_cuda(model):
+    """Drop the cached predictor and free the CUDA caching allocator's reserved
+    (but unallocated) memory. `del result` inside the streaming loop only drops
+    the Python reference to that result — it does not return PyTorch's reserved
+    blocks to the pool, and the YOLO object also keeps `model.predictor` alive
+    across calls for reuse. Across three stages (val -> clean predict -> noncar
+    predict) that reserved memory just accumulates instead of being reused, so
+    call this between stages, not only once after val()."""
+    if getattr(model, "predictor", None) is not None:
+        del model.predictor
+        model.predictor = None
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+def max_corrosion_confs(model, source, conf, imgsz, device, empty_cache_every=200):
     """Per-image max corrosion confidence. Streams results and discards each
-    one after reading its boxes — only boxes are ever kept, never masks."""
+    one after reading its boxes — only boxes are ever kept, never masks.
+
+    Also periodically empties the CUDA cache mid-loop: even within a single
+    streaming call, thousands of images can leave the allocator holding more
+    reserved-but-unallocated memory than it needs, which is what starves a
+    later large allocation even though "enough" memory looks free in nvidia-smi.
+    """
     maxes = []
-    for result in model.predict(source=source, conf=conf, imgsz=imgsz, batch=1,
-                                stream=True, device=device, verbose=False):
+    for i, result in enumerate(model.predict(source=source, conf=conf, imgsz=imgsz,
+                                             batch=1, stream=True, device=device,
+                                             verbose=False)):
         boxes = result.boxes
         m = 0.0
         if boxes is not None and len(boxes) > 0:
@@ -49,6 +73,8 @@ def max_corrosion_confs(model, source, conf, imgsz, device):
                 m = float(corr.max())
         maxes.append(m)
         del result
+        if empty_cache_every and (i + 1) % empty_cache_every == 0 and torch.cuda.is_available():
+            torch.cuda.empty_cache()
     return maxes
 
 
@@ -84,8 +110,7 @@ def main():
         rows.append((names[c], float(seg.ap50[i]), p, r, f1))
     rows.sort(key=lambda x: x[0])
     del results
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    _reset_cuda(model)
 
     # predict at the lowest FPR threshold, not 0.001: conf=0.001 yields hundreds
     # of detections per image and each mask upsample is ~1GB. NMS is greedy by
@@ -98,6 +123,7 @@ def main():
     clean_imgs = sorted(p.name for p in clean_dir.iterdir() if p.suffix.lower() in IMG_EXTS)
     clean_max = max_corrosion_confs(model, str(clean_dir), pred_conf, args.imgsz, device)
     fpr = {t: float(np.mean([m >= t for m in clean_max])) for t in thresholds}
+    _reset_cuda(model)
 
     # --- 3. secondary: non-car test images ---
     noncar_rate = None
