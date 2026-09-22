@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import crops, health, inspect, meta
+from app.api import batch, crops, health, inspect, meta
 from app.config import settings
 from app.core.device import resolve_device
 from app.core.model_registry import model_registry
@@ -54,3 +54,4 @@ app.include_router(health.router)
 app.include_router(meta.router)
 app.include_router(inspect.router)
 app.include_router(crops.router)
+app.include_router(batch.router)
