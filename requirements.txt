@@ -1,0 +1,16 @@
+torch==2.13.0
+torchvision==0.28.0
+ultralytics==8.4.91
+sahi==0.12.2
+fastapi==0.139.0
+uvicorn==0.51.0
+pydantic==2.13.4
+pydantic-settings>=2.0.0
+python-multipart==0.0.32
+python-dotenv==1.2.2
+numpy==2.2.6
+opencv-python==5.0.0.93
+Pillow==12.3.0
+PyYAML==6.0.3
+shapely==2.1.2
+aiofiles>=23.0.0
