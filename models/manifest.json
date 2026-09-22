@@ -1,0 +1,66 @@
+{
+  "version": "1.0.0",
+  "description": "Production model weights for the car-defect inference API. Paths are relative to the source R&D repo; sha256 is filled in by scripts/copy_models.py.",
+  "models": [
+    {
+      "name": "sod_champion",
+      "stage": "stage1",
+      "filename": "sod_champion.pt",
+      "role": "Salient-object pre-screener (binary anomaly gate)",
+      "source": "backend/models/stage1/sod_champion.pt",
+      "required": true,
+      "custom_head": false,
+      "sha256": "97e85e730d746baf230a6eec37770481e7a902e72152edc329d69e2a7bdc6fa3"
+    },
+    {
+      "name": "objectness_branch_new",
+      "stage": "stage2",
+      "filename": "objectness_branch_new.pt",
+      "role": "Corrosion / disjoint_part specialist with objectness branch",
+      "source": "runs/segment/seesaw_surgical_objectness-26/weights/best.pt",
+      "required": true,
+      "custom_head": true,
+      "sha256": "c15d7acb78ccbcc917a66c11ab96383b4bbbb29d06d69167ff3a6233437045f2"
+    },
+    {
+      "name": "baseline_m5",
+      "stage": "stage2",
+      "filename": "baseline_m5.pt",
+      "role": "Head-class specialist (broken_part, crack, dent, glass_shatter, scratch)",
+      "source": "runs/segment/stage1_head_warmup_7cls_extended/stage1_head_warmup_7cls_extended/weights/best.pt",
+      "required": true,
+      "custom_head": false,
+      "sha256": "7e754b5126e0add162f44fd726ee79a71b78f976a8391693a4960a9ae30c71c7"
+    },
+    {
+      "name": "surgical_early",
+      "stage": "stage2",
+      "filename": "surgical_early.pt",
+      "role": "Surgical fine-tuning champion (max_recall preset)",
+      "source": "runs/segment/seesaw_surgical_early/weights/best.pt",
+      "required": false,
+      "custom_head": false,
+      "sha256": "e853e8c266c23a27ed8a3ea6a2db24b0cee494cfa53ef7ed4bd9126aa11fbf88"
+    },
+    {
+      "name": "model_4",
+      "stage": "stage2",
+      "filename": "model_4.pt",
+      "role": "Differential fine-tune (max_recall preset)",
+      "source": "runs/segment/model5_resume_adapt_7cls/stage2_differential_finetune_7cls/weights/best.pt",
+      "required": false,
+      "custom_head": false,
+      "sha256": "3e19b985097bd313ae7fff560f6a5ebaac96788adab8f268660962791a4fbedd"
+    },
+    {
+      "name": "panel_champion",
+      "stage": "stage3",
+      "filename": "panel_champion.pt",
+      "role": "Body-panel segmenter (21 panel classes)",
+      "source": "backend/models/stage3/panel_champion.pt",
+      "required": true,
+      "custom_head": false,
+      "sha256": "dd5fa1566855dbef5067697e9ad56d378f98196ede29686211c22417ab01468d"
+    }
+  ]
+}
