@@ -221,3 +221,197 @@ curl -X POST http://localhost:8000/v1/inspect \
 ```
 
 **Errors:** `400` (undecodable image), `422` (invalid `spec`), `500` (pipeline failure).
+
+
+---
+
+## POST /v1/inspect/batch
+
+Submit **N** images for asynchronous inspection. Returns a `job_id`
+immediately; poll `GET /v1/jobs/{job_id}` for progress and results. Images are
+decoded up front (fail-fast on bad input); the actual pipeline runs in a
+bounded thread-pool worker (default 1 worker — GPU safety).
+
+**Request:** `multipart/form-data`
+
+| Field | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `files` | file[] | yes | — | One or more vehicle images |
+| `preset` | string | no | `safety` | Operating preset applied to every image |
+| `spec` | string (JSON) | no | — | Full `PipelineSpec` JSON (overrides preset) |
+| `return_crops` | boolean | no | `true` | Generate per-defect crop images |
+| `device` | string | no | `auto` | `auto` \| `cuda` \| `mps` \| `cpu` |
+
+**Example request**
+```bash
+curl -X POST http://localhost:8000/v1/inspect/batch \
+  -F "files=@car1.jpg" -F "files=@car2.jpg" -F "files=@car3.jpg" \
+  -F "preset=safety"
+```
+
+**Response `200`**
+```json
+{
+  "job_id": "JOB_20260922140100_ab12cd",
+  "status": "queued",
+  "total": 3
+}
+```
+
+**Errors:** `400` (no files / undecodable image), `422` (invalid `spec`).
+
+---
+
+## GET /v1/jobs/{job_id}
+
+Poll the status and results of a batch job.
+
+**Response `200`** — `status` is one of `queued`, `running`, `done`, `failed`.
+```json
+{
+  "job_id": "JOB_20260922140100_ab12cd",
+  "status": "done",
+  "total": 3,
+  "completed": 3,
+  "preset": "safety",
+  "created_at": "2026-09-22T14:01:00+00:00",
+  "updated_at": "2026-09-22T14:02:15+00:00",
+  "error": null,
+  "results": [
+    {
+      "source_filename": "car1.jpg",
+      "inspection_id": "INSP_20260922140105_a1b2c3",
+      "inspection_status": "FAIL",
+      "total_defects_found": 2,
+      "defects": [ /* same Defect shape as /v1/inspect */ ]
+    }
+    /* ... one entry per input file, in input order */
+  ]
+}
+```
+
+While the job is `running`, `results` is `null` and `completed` counts the
+images processed so far. If `status` is `failed`, `error` contains the first
+exception message and `results` is `null`.
+
+**Errors:** `404` (job_id not found).
+
+## GET /v1/jobs
+
+List recent batch jobs.
+
+**Query:** `limit` (integer, default 20)
+
+**Response `200`**
+```json
+{
+  "jobs": [
+    {
+      "job_id": "JOB_20260922140100_ab12cd",
+      "status": "done",
+      "total": 3,
+      "completed": 3,
+      "preset": "safety",
+      "created_at": "2026-09-22T14:01:00+00:00",
+      "updated_at": "2026-09-22T14:02:15+00:00",
+      "error": null
+    }
+  ]
+}
+```
+
+---
+
+## GET /v1/crops/{filename}
+
+Serve a defect crop image (PNG). The `crop_url` field on every `Defect`
+points here.
+
+**Response `200`:** `image/png` binary.
+**Errors:** `400` (invalid filename), `404` (crop not found).
+
+---
+
+## Error conventions
+
+| Status | When |
+|---|---|
+| `200` | Success (including batch submit) |
+| `400` | Bad request: empty upload, undecodable image bytes, invalid crop filename |
+| `404` | Job id or crop filename not found |
+| `422` | Invalid `spec` JSON, or no stages enabled |
+| `500` | Pipeline failed during inference |
+
+All error responses carry a JSON body `{ "detail": "..." }`.
+
+---
+
+## Panel id mapping
+
+The `panel` field on every `Defect` is the snake_case id from this table.
+A defect not contained in any body panel (IoD < 0.5) is labeled `"Unknown"`.
+Tire / wheel defects are suppressed by Stage 4 and do not appear in the
+`defects` list — they appear in `suppressed_detections` with `reason: "tire"`.
+
+| Display label | `panel` id |
+|---|---|
+| Quarter-panel | `quarter_panel` |
+| Front-wheel | `front_wheel` |
+| Back-window | `back_window` |
+| Trunk | `trunk` |
+| Front-door | `front_door` |
+| Rocker-panel | `rocker_panel` |
+| Grille | `grille` |
+| Windshield | `windshield` |
+| Front-window | `front_window` |
+| Back-door | `back_door` |
+| Headlight | `headlight` |
+| Back-wheel | `back_wheel` |
+| Back-windshield | `back_windshield` |
+| Hood | `hood` |
+| Fender | `fender` |
+| Tail-light | `tail_light` |
+| License-plate | `license_plate` |
+| Front-bumper | `front_bumper` |
+| Back-bumper | `back_bumper` |
+| Mirror | `mirror` |
+| Roof | `roof` |
+
+---
+
+## Worked example: batch flow end-to-end
+
+```bash
+# 1. Submit a batch of 5 images
+curl -X POST http://localhost:8000/v1/inspect/batch \
+  -F "files=@a.jpg" -F "files=@b.jpg" -F "files=@c.jpg" \
+  -F "files=@d.jpg" -F "files=@e.jpg" \
+  -F "preset=safety"
+# -> {"job_id":"JOB_20260922141000_ab12cd","status":"queued","total":5}
+
+# 2. Poll until status is "done" (or "failed")
+curl http://localhost:8000/v1/jobs/JOB_20260922141000_ab12cd
+# -> {"status":"running","completed":2,"total":5,...,"results":null}
+# ... wait a few seconds ...
+# -> {"status":"done","completed":5,"total":5,"results":[...]}
+
+# 3. Each result has the same shape as /v1/inspect, plus source_filename
+#    so the frontend can map back to the original upload.
+
+# 4. Each defect's crop_url ("/v1/crops/INSP_..._000.png") can be fetched:
+curl -O crop000.png http://localhost:8000/v1/crops/INSP_20260922141005_xyz789_000.png
+```
+
+---
+
+## Response serialization
+
+All responses use `model_dump(by_alias=True)`. The JSON field names in the
+responses are the **frontend-facing short names** (`id`, `class`, `bbox`,
+`panel`, `iod`, `dsi`), not the internal pipeline keys (`defect_id`,
+`defect_class`, `global_bbox_xyxy`, `assigned_panel`,
+`containment_ratio_iod`, `damage_severity_index_dsi`).
+
+The `broken_part` defect class is canonical. A legacy `broken_lamp` label
+emitted by some checkpoints is normalized to `broken_part` inside the
+pipeline and never appears in any API response.
