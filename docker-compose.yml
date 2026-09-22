@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  inference-api:
+    build: .
+    container_name: car-defect-inference-api
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount the local models directory so the container can read the weights.
+      # If the host has resolved Git LFS pointers, the container sees the real .pt files.
+      - ./models:/app/models:ro
+      # Mount storage so crops and the SQLite job database persist across container restarts.
+      - ./storage:/app/storage
+    environment:
+      - INFERENCE_API_DEVICE=auto
+      - INFERENCE_API_MAX_WORKERS=1
+    # NOTE: Apple Silicon MPS (Metal) is NOT available inside Docker containers.
+    # The container will automatically fall back to CPU inference. For MPS
+    # acceleration, run the service natively on the host (see README.md).
+    restart: unless-stopped
