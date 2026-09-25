@@ -110,7 +110,9 @@ class SeesawBCE(nn.Module):
         self.q = q
         self.eps = eps
         self.bce = nn.BCEWithLogitsLoss(reduction="none")
-        self.cum_samples = None
+        # persistent buffer so cum_samples lands in state_dict / sidecar files;
+        # None until first forward (lazy init in forward() still applies)
+        self.register_buffer("cum_samples", None, persistent=True)
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Compute seesaw-weighted BCE, returning element-wise loss with the same shape as pred."""

@@ -1,0 +1,35 @@
+task: segment
+loss_type: seesaw
+seesaw_p: 0.6                # softened from 0.8 — Retrain.md's documented fix
+seesaw_q: 2.0
+use_objectness: true
+obj_loss_weight: 1.0
+surgical_mode: early_texture # layers 0-4 + head unfrozen, 5-22 frozen
+model_preset: weights/champion_v1.pt
+project_name: stage2_v2
+run_name: champion_recovery
+multi_scale: false
+dataset_config: data/processed/yolo_seg_hn999/data.yaml
+epochs: 40
+imgsz: 1024
+batch_size: 8
+patience: 12
+device: 0
+workers: 8
+amp: true
+freeze: 23
+optimizer: AdamW
+lr0: 0.0005
+lrf: 0.01
+augmentations:
+  hsv_h: 0.015
+  hsv_s: 0.70
+  hsv_v: 0.40
+  degrees: 0.0
+  scale: 0.50
+  perspective: 0.0
+  fliplr: 0.5
+  mosaic: 0.0
+  mixup: 0.0
+  erasing: 0.10
+  close_mosaic: 0

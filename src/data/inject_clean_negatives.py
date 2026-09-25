@@ -121,7 +121,7 @@ def main():
     print(f"positive imgs: {n_pos}")
     print(f"injected     : {copied}")
     print(f"total train  : {total_train}")
-    print(f"manifest     : {manifest_path.relative_to(REPO_ROOT)}")
+    print(f"manifest     : {manifest_path}")
 
 
 if __name__ == "__main__":

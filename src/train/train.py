@@ -1,6 +1,8 @@
 import os
+import re
 import sys
 import argparse
+from pathlib import Path
 # Add project root to sys.path so 'src' package is importable
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _PROJECT_ROOT not in sys.path:
@@ -126,11 +128,100 @@ def rebuild_optimizer_after_unfreeze(trainer, mode=None):
     print(f"[DEBUG CALLBACK END] trainer.csv={getattr(trainer, 'csv', 'N/A')}", flush=True)
     print(f"{'='*80}\n", flush=True)
 
+def find_seesaw_bce(trainer):
+    """Locate the vendored SeesawBCE module on the trainer's model criterion, if any."""
+    from ultralytics.utils.torch_utils import unwrap_model
+    model = getattr(trainer, "model", None)
+    if model is None:
+        return None
+    model = unwrap_model(model)
+    crit = getattr(model, "criterion", None)
+    bce = getattr(crit, "bce", None) if crit is not None else None
+    return bce if bce is not None and bce.__class__.__name__ == "SeesawBCE" else None
+
+
+def make_seesaw_save_callback(save_path):
+    """Save the Seesaw cum_samples buffer to a sidecar file at the end of every epoch."""
+    def callback(trainer):
+        bce = find_seesaw_bce(trainer)
+        if bce is None or bce.cum_samples is None:
+            return
+        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+        torch.save({"cum_samples": bce.cum_samples.detach().cpu()}, save_path)
+    return callback
+
+
+def make_seesaw_load_callback(state_path):
+    """Load the Seesaw cum_samples sidecar into the loss module at train start."""
+    def callback(trainer):
+        path = Path(state_path)
+        if not path.exists():
+            print(f"[ℹ] Seesaw state file not found at {path}; starting with fresh cum_samples")
+            return
+        bce = find_seesaw_bce(trainer)
+        if bce is None:
+            print("[⚠] Seesaw state: no SeesawBCE module found on the model; sidecar not loaded")
+            return
+        state = torch.load(path, map_location="cpu")
+        cum = state.get("cum_samples") if isinstance(state, dict) else None
+        if cum is None:
+            print(f"[⚠] {path} has no 'cum_samples' key; ignoring")
+            return
+        from ultralytics.utils.torch_utils import unwrap_model
+        head = unwrap_model(trainer.model).model[-1]
+        nc = getattr(head, "nc", None)
+        if nc is not None and cum.shape[0] != nc:
+            print(f"[⚠] cum_samples shape {tuple(cum.shape)} != nc={nc}; reinitializing to zeros")
+            cum = torch.zeros(nc, dtype=torch.float32)
+        bce.cum_samples = cum.to(next(trainer.model.parameters()).device)
+        print(f"[ℹ] Loaded Seesaw cum_samples from {path}: {bce.cum_samples.tolist()}")
+    return callback
+
+
 def load_config(config_path):
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Configuration file not found at: {config_path}")
     with open(config_path, "r") as f:
         return yaml.safe_load(f)
+
+
+def restore_cv_obj(new_head, preset_path):
+    """Recover trained cv_obj tensors from a raw checkpoint into a fresh objectness head.
+
+    Head replacement re-initializes cv_obj to (weight 0.0, bias -2.0), which
+    discards whatever the warm-start checkpoint learned. Copies the last head
+    layer's cv_obj.* tensors with a per-tensor shape check.
+    Returns the number of tensors copied (0 if the checkpoint has no cv_obj).
+    """
+    ckpt = torch.load(preset_path, map_location="cpu", weights_only=False)
+    module = (ckpt.get("ema") or ckpt.get("model")) if isinstance(ckpt, dict) else ckpt
+    if module is None:
+        print("[ℹ] No cv_obj in checkpoint — using init bias −2.0")
+        return 0
+    pat = re.compile(r"model\.(\d+)\.cv_obj\.(\d+)\.(weight|bias)")
+    matches = {pat.match(k).groups(): v for k, v in module.state_dict().items() if pat.match(k)}
+    if not matches:
+        print("[ℹ] No cv_obj in checkpoint — using init bias −2.0")
+        return 0
+    last_layer = max(int(layer) for layer, _, _ in matches)
+    copied = 0
+    for (layer, level, param), v in matches.items():
+        if int(layer) != last_layer:
+            continue
+        target = getattr(new_head.cv_obj[int(level)], param)
+        if target.shape != v.shape:
+            raise RuntimeError(
+                f"cv_obj shape mismatch for model.{layer}.cv_obj.{level}.{param}: "
+                f"checkpoint {tuple(v.shape)} vs head {tuple(target.shape)}"
+            )
+        with torch.no_grad():
+            target.copy_(v.to(dtype=target.dtype))
+        copied += 1
+    print(f"[cv_obj] restored {copied} tensors from {preset_path}")
+    for i, m in enumerate(new_head.cv_obj):
+        b = m.bias
+        print(f"[cv_obj] level {i} bias: min={b.min().item():.4f} mean={b.mean().item():.4f} max={b.max().item():.4f}")
+    return copied
 
 
 def get_git_commit():
@@ -159,6 +250,17 @@ def main():
         type=str,
         default=None,
         help="Override dataset config path",
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from runs/segment/<project>/<run_name>/weights/last.pt if it exists",
+    )
+    parser.add_argument(
+        "--seesaw_state",
+        type=str,
+        default=None,
+        help="Manual override path for the Seesaw cum_samples sidecar (.pt)",
     )
     args = parser.parse_args()
 
@@ -209,31 +311,46 @@ def main():
 
     aug = cfg.get("augmentations", cfg)
 
-    print(f"Initializing architecture weights: {model_preset}")
-    model = YOLO(model_preset)
-    
-    # Replace head with objectness branch if enabled
-    if use_objectness:
-        print("[🔪] Replacing head with Segment26WithObjectness")
-        from src.models.segment_head_with_obj import Segment26WithObjectness
-        original_head = model.model.model[-1]
-        # Get input channels for each FPN level (first conv's input in each cv2 branch)
-        ch = tuple(x[0].conv.in_channels for x in original_head.cv2)
-        print(f"[DEBUG] Head ch: {ch}")
-        model.model.model[-1] = Segment26WithObjectness(
-            nc=original_head.nc,
-            nm=original_head.nm,
-            npr=original_head.npr,
-            reg_max=original_head.reg_max,
-            end2end=getattr(original_head, "end2end", False),
-            ch=ch
-        )
-        # Copy weights from original head's cv2, cv3, cv4
-        new_head = model.model.model[-1]
-        new_head.cv2 = original_head.cv2
-        new_head.cv3 = original_head.cv3
-        new_head.cv4 = original_head.cv4
-        new_head.proto = original_head.proto
+    # Resume support: if --resume and a last.pt exists, load it directly and skip
+    # the model_preset load + objectness-head replacement (both are in the checkpoint).
+    resume_path = None
+    if args.resume:
+        candidate = Path("runs/segment") / project_name / run_name / "weights" / "last.pt"
+        if candidate.exists():
+            resume_path = str(candidate)
+            print(f"[ℹ] Resuming from {resume_path}")
+        else:
+            print("[ℹ] --resume set but no last.pt found; starting fresh")
+
+    if resume_path is not None:
+        model = YOLO(resume_path)
+    else:
+        print(f"Initializing architecture weights: {model_preset}")
+        model = YOLO(model_preset)
+
+        # Replace head with objectness branch if enabled
+        if use_objectness:
+            print("[🔪] Replacing head with Segment26WithObjectness")
+            from src.models.segment_head_with_obj import Segment26WithObjectness
+            original_head = model.model.model[-1]
+            # Get input channels for each FPN level (first conv's input in each cv2 branch)
+            ch = tuple(x[0].conv.in_channels for x in original_head.cv2)
+            print(f"[DEBUG] Head ch: {ch}")
+            model.model.model[-1] = Segment26WithObjectness(
+                nc=original_head.nc,
+                nm=original_head.nm,
+                npr=original_head.npr,
+                reg_max=original_head.reg_max,
+                end2end=getattr(original_head, "end2end", False),
+                ch=ch
+            )
+            # Copy weights from original head's cv2, cv3, cv4
+            new_head = model.model.model[-1]
+            new_head.cv2 = original_head.cv2
+            new_head.cv3 = original_head.cv3
+            new_head.cv4 = original_head.cv4
+            new_head.proto = original_head.proto
+            restore_cv_obj(new_head, model_preset)
     
     # Inject loss parameters into model args for native loss injection
     model.args["loss_type"] = loss_type
@@ -287,6 +404,15 @@ def main():
                 model.add_callback("on_before_build_optimizer", make_unfreeze_callback(surgical_mode))
                 model.add_callback("on_train_start", set_bn_eval_callback)
                 print(f"[DEBUG] Callback added. Total callbacks: {len(model.callbacks.get('on_before_build_optimizer', []))}", flush=True)
+
+            # Seesaw cum_samples persistence: save sidecar every epoch; load it on
+            # resume (or when --seesaw_state is given for manual control).
+            if loss_type == "seesaw":
+                seesaw_state_path = args.seesaw_state or str(
+                    Path("runs/segment") / project_name / run_name / "seesaw_state.pt")
+                model.add_callback("on_train_epoch_end", make_seesaw_save_callback(seesaw_state_path))
+                if args.resume or args.seesaw_state:
+                    model.add_callback("on_train_start", make_seesaw_load_callback(seesaw_state_path))
             
             model.train(
                 task=task,
@@ -315,10 +441,11 @@ def main():
                 mixup=aug.get("mixup", 0.0),
                 erasing=aug.get("erasing", 0.2),
                  close_mosaic=aug.get("close_mosaic", 10),
-                 val=True,
-                 save=True,
-                 project=project_name,
-                 name=run_name,
+                  val=True,
+                  save=True,
+                  project=project_name,
+                  name=run_name,
+                  resume=resume_path,
                  loss_type=loss_type,
                  fl_gamma=fl_gamma,
                  fl_alpha=fl_alpha,
