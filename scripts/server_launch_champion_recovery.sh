@@ -66,7 +66,7 @@ check "imgsz=1024"
 check "epochs=40"
 
 if grep -qF "[cv_obj] level" "$LOG"; then
-  if grep -F "[cv_obj] level" "$LOG" | grep -qF "-2.0000"; then
+  if grep -F "[cv_obj] level" "$LOG" | grep -qF -- "-2.0000"; then
     echo "[warn] cv_obj bias line shows init value -2.0000 — checkpoint may lack cv_obj" >&2
     warn=1
   else
